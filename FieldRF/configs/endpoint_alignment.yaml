@@ -1,0 +1,90 @@
+# Real-only, unpaired endpoint distribution alignment.
+#
+# This experiment does not read fieldrf_synthetic and never matches filenames
+# across fields.  Each source endpoint is compared with an independent,
+# same-modality 7T endpoint using patch-distribution CORAL.
+
+finetune_from: runs/pretrain/fieldrf_epoch90.pt
+output_dir: runs/endpoint_alignment
+
+data:
+  data_root: /path/to/MRIxFields2026
+  split: Training_retrospective
+  modality: T1W
+  modalities: [T1W, T2W, T2FLAIR]
+  source_fields: [0.1T, 1.5T, 3T, 5T]
+  target_field: 7T
+  cache_root: /path/to/fieldrf_cache
+  feat_cache_name: brainid_feat
+
+unpaired_alignment:
+  # First isolate field mismatch within each modality. Cross-modality
+  # canonicalization is intentionally excluded from this experiment.
+  source_fields: [0.1T, 1.5T, 3T, 5T]
+  reference_fields: [7T]
+
+  # Endpoints are extracted online from the frozen Stage-1 checkpoint.
+  inversion_steps: 4
+  inversion_solver: euler
+
+  # A 96-cubed endpoint yields 512 and 64 spatial samples respectively.
+  patch_sizes: [12, 24]
+  lambda_align: 1.0
+  lambda_delta: 0.01
+  lambda_spatial: 0.0
+  lambda_reference_identity: 0.01
+
+  model:
+    hidden_channels: 24
+    domain_embed_dim: 8
+    num_blocks: 2
+
+vae:
+  checkpoint: /path/to/pretrained/autoencoder_v1.pt
+  scale_factor: 1.0055984258651733
+  sliding_window:
+    roi_size: [384, 384, 64]
+    overlap: 0.5
+    mode: gaussian
+    sw_batch_size: 1
+    amp_dtype: float16
+
+bridge:
+  feat4_channels: 64
+  unet_channels: [64, 128, 256, 512]
+  num_res_blocks: [2, 2, 2, 2]
+  attention_levels: [false, false, true, true]
+  num_head_channels: [0, 0, 32, 32]
+  norm_num_groups: 32
+  norm_eps: 1.0e-6
+  num_train_timesteps: 1000
+
+train:
+  batch_size: 1
+  n_epochs: 20
+  lr: 1.0e-4
+  lr_min: 1.0e-6
+  warmup_epochs: 1
+  weight_decay: 0.0
+  grad_clip: 1.0
+  mixed_precision: bfloat16
+  save_every: 1
+  log_every: 25
+  num_workers: 4
+  prefetch_factor: 2
+
+validation:
+  # Training_prospective is the cache split with same-subject cross-field
+  # pairs. It is evaluation-only here and never enters an optimizer loss.
+  # Validating_prospective contains different IDs across fields, so it cannot
+  # provide paired SSIM for this diagnostic.
+  split: Training_prospective
+  modalities: [T1W, T2W, T2FLAIR]
+  source_fields: [0.1T, 1.5T, 3T, 5T]
+  target_field: 7T
+  n_samples: 1
+  every_epochs: 1
+  inversion_steps: 4
+  inversion_solver: euler
+  n_infer_steps: 20
+  eval_slice_range: [150, 180]

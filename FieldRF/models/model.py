@@ -1,21 +1,9 @@
-"""FieldRF-V7: Rectified Flow bridge + ControlNet (feat4), MAISI-aligned.
+"""FieldRF: anatomy-conditioned rectified flow with MAISI UNet and ControlNet.
 
-Architecture:
-  - Rectified Flow (RF) forward: linear interpolation between z_0 and noise.
-  - Velocity (v) prediction via UNet + ControlNet(feat4).
-  - Euler ODE sampling (deterministic reverse), no ancestral noise.
-  - Timestep-transform (scale=1.4, base=32³) aligned with MAISI recipe.
-  - Conditioning_embedding [64,64] (was [16,64] in V6).
-
-Key differences from V6:
-  - SelfRDB schedule removed entirely (no bridge soft prior, no endpoint).
-    - RF forward: z_t = (1-t/T)*z_0 + (t/T)*noise (MAISI convention).
-    - v = z_0 - noise (NOT noise - z_0). VERIFIED against MAISI
-      rectified_flow.py: model_gt = images - noise. Same sign convention.
-    - t is FLOAT, passed directly to UNet.
-  - ControlNet conditioning_embedding_num_channels = [64, 64].
-  - feat4_downsample / endpoint_proj removed (no source projection).
-  - mu_x0, mu_y, std schedule buffers removed.
+The network predicts data-minus-endpoint velocity along a linear RF path.
+MAISI timestep remapping and Euler/Heun integration support shared translation
+across modality and field labels. Source-latent conditioning remains optional
+so existing checkpoint architectures retain their parameter layouts.
 """
 
 import math
@@ -57,7 +45,7 @@ def timestep_transform(t, input_img_size_numel, base_img_size_numel=32768,
     return new_t
 
 
-# ── Class label mapping (same as V3/V6) ── #
+# ── Class label mapping (same as RF/RF) ── #
 
 MODALITIES = ["T1W", "T2W", "T2FLAIR"]
 FIELDS = ["0.1T", "1.5T", "3T", "5T", "7T"]
@@ -123,7 +111,7 @@ class SourceLatentAdapter(nn.Module):
 
     Per-channel spatial normalization removes the easiest field/intensity
     shortcut.  The final convolution is zero initialized, so an adapter model
-    loaded from V7a is functionally identical to V7a before Stage 2 updates.
+    loaded from identity RF is functionally identical to identity RF before Stage 2 updates.
     """
 
     def __init__(self, in_channels=4, out_channels=64, hidden_channels=16):
@@ -145,16 +133,16 @@ class SourceLatentAdapter(nn.Module):
         return self.net(z_src)
 
 
-# ── V7a Bridge: Rectified Flow + ControlNet ── #
+# ── identity RF Bridge: Rectified Flow + ControlNet ── #
 
-class BridgeRFV7(nn.Module):
-    """FieldRF-V7: Class-conditional latent diffusion with RF + ControlNet(feat4).
+class FieldRFModel(nn.Module):
+    """Anatomy-conditioned rectified flow with a shared UNet and ControlNet.
 
     Architecture:
-      - V7a UNet: 4ch conv_in for z_t, pretrained init.
-      - Legacy V7b concat: 8ch conv_in for [z_t | z_src], with zero-init
-        source-channel weights when expanding a V7a checkpoint.
-      - V7b adapter: the 4ch V7a conv_in remains intact and a zero-init source
+      - identity RF UNet: 4ch conv_in for z_t, pretrained init.
+      - Legacy source-conditioned RF concat: 8ch conv_in for [z_t | z_src], with zero-init
+        source-channel weights when expanding a identity RF checkpoint.
+      - source-conditioned RF adapter: the 4ch identity RF conv_in remains intact and a zero-init source
         residual is added after conv_in.
       - ControlNet: monai ControlNet with a configurable conditioning pyramid.
         Legacy Brain-ID uses 192³ via [64,64] (one stride-2); BrainID-HR uses
@@ -172,7 +160,7 @@ class BridgeRFV7(nn.Module):
       Deterministic, N=20 steps (configurable).
 
     No SelfRDB residue. Stage 2 adversarial training is implemented by the
-    trainer; this module supplies the V7b source-latent path and graft sampler.
+    trainer; this module supplies the source-conditioned RF source-latent path and graft sampler.
     """
 
     def __init__(
@@ -222,7 +210,7 @@ class BridgeRFV7(nn.Module):
         self.use_source_latent = source_injection != "none"
         self.in_channels = z_channels * (2 if source_injection == "concat" else 1)
 
-        # ── UNet (V7a: z_t; V7b: [z_t | z_src]) ── #
+        # ── UNet (identity RF: z_t; source-conditioned RF: [z_t | z_src]) ── #
         self.unet = DiffusionModelUNetMaisiGradSafe(
             spatial_dims=3,
             in_channels=self.in_channels,
@@ -274,7 +262,7 @@ class BridgeRFV7(nn.Module):
     # ── Noise prediction forward ── #
 
     def _unet_input(self, z_t, z_src=None):
-        """Build the V7a/V7b main-UNet input.
+        """Build the identity RF/source-conditioned RF main-UNet input.
 
         z_src is in the same scaled latent space as z_t. Identity RF
         supervision passes None, which is exactly an all-zero source channel.
@@ -437,7 +425,7 @@ class BridgeRFV7(nn.Module):
             class_label: (B,) target class.
             t: optional pre-sampled, already transformed timesteps.
             z_src: optional scaled source latent. Identity supervision leaves
-                this unset so the new V7b channels remain zero.
+                this unset so the new source-conditioned RF channels remain zero.
             endpoint: optional externally supplied RF endpoint. Passing the
                 same deterministic endpoint to paired source/target branches
                 establishes an explicit sample-wise coupling.
@@ -571,7 +559,7 @@ class BridgeRFV7(nn.Module):
             feats: list of 5 Brain-ID features.
             class_label: (B,) or int target class.
             n_infer_steps: number of Euler steps (default 20).
-            z_src: optional UNSCALED source latent for V7b conditioning.
+            z_src: optional UNSCALED source latent for source-conditioned RF conditioning.
         Returns:
             x0_pred: (B, 4, 96³) predicted target latent (UNSCALED, for VAE decode).
         """
@@ -812,10 +800,10 @@ class BridgeRFV7(nn.Module):
         """Load pretrained UNet (4ch conv_in intact), attach fresh ControlNet.
 
         ControlNet is randomly initialized (DO NOT copy UNet weights).
-        This avoids the oscillation observed in V5 when ControlNet was
+        This avoids the oscillation observed in RF when ControlNet was
         initialized with copied UNet weights while the UNet was trainable.
         """
-        bridge = BridgeRFV7(
+        bridge = FieldRFModel(
             unet_channels=unet_channels,
             num_res_blocks=num_res_blocks,
             attention_levels=attention_levels,
@@ -838,18 +826,18 @@ class BridgeRFV7(nn.Module):
 
         # Handle Stage 1/2 training checkpoint format (full bridge state dict)
         if "bridge" in sd:
-            raw_state = BridgeRFV7._adapt_source_channels(sd["bridge"], bridge)
-            BridgeRFV7._load_bridge_state(bridge, raw_state)
+            raw_state = FieldRFModel._adapt_source_channels(sd["bridge"], bridge)
+            FieldRFModel._load_bridge_state(bridge, raw_state)
             # Restore scale_factor from checkpoint (was missing — caused
             # vis/inference scripts that use from_pretrained directly to
             # silently use scale_factor=1.0, producing garbage VAE decodes).
             if "scale_factor" in sd:
                 bridge.scale_factor = float(sd["scale_factor"])
-                print(f"[V7] Restored scale_factor={bridge.scale_factor:.6f} from checkpoint")
+                print(f"[RF] Restored scale_factor={bridge.scale_factor:.6f} from checkpoint")
             if "num_train_timesteps" in sd:
                 bridge.num_train_timesteps = int(sd["num_train_timesteps"])
             if load_ema and "ema" in sd:
-                ema_state = BridgeRFV7._adapt_source_channels(sd["ema"], bridge)
+                ema_state = FieldRFModel._adapt_source_channels(sd["ema"], bridge)
                 result = bridge.load_state_dict(ema_state, strict=False)
                 float_keys = {k for k, v in bridge.state_dict().items()
                               if v.dtype.is_floating_point}
@@ -859,13 +847,13 @@ class BridgeRFV7(nn.Module):
                 ]
                 if missing_float:
                     raise RuntimeError(
-                        f"[V7] EMA checkpoint missing {len(missing_float)} float keys "
+                        f"[RF] EMA checkpoint missing {len(missing_float)} float keys "
                         f"(first 5: {missing_float[:5]}). "
                         f"Checkpoint/model architecture mismatch."
                     )
-                print(f"[V7] Loaded EMA weights for inference/vis")
+                print(f"[RF] Loaded EMA weights for inference/vis")
             else:
-                print(f"[V7] Loaded full bridge from training checkpoint")
+                print(f"[RF] Loaded full bridge from training checkpoint")
             bridge = bridge.to(device)
             return bridge
 
@@ -885,13 +873,13 @@ class BridgeRFV7(nn.Module):
         missing, unexpected = bridge.unet.load_state_dict(cleaned, strict=False)
         missing_real = [k for k in missing if "class_embedding" not in k]
         if missing_real:
-            print(f"[V7] UNet missing (first 5): {missing_real[:5]}")
+            print(f"[RF] UNet missing (first 5): {missing_real[:5]}")
         if unexpected:
-            print(f"[V7] UNet unexpected (first 5): {unexpected[:5]}")
+            print(f"[RF] UNet unexpected (first 5): {unexpected[:5]}")
 
         # ControlNet: random init (no copy from UNet)
         bridge = bridge.to(device)
-        print(f"[V7] Bridge ready: in_channels={bridge.in_channels}, "
+        print(f"[RF] Bridge ready: in_channels={bridge.in_channels}, "
               f"num_train_timesteps={num_train_timesteps}, "
               f"controlnet=on (feat4 {feat4_channels}ch, "
               f"conditioning_embedding="
@@ -901,7 +889,7 @@ class BridgeRFV7(nn.Module):
 
     @staticmethod
     def _load_bridge_state(bridge, state_dict):
-        """Load V7 state, permitting only a new zero-init source adapter."""
+        """Load RF state, permitting only a new zero-init source adapter."""
         result = bridge.load_state_dict(state_dict, strict=False)
         missing = [
             k for k in result.missing_keys
@@ -909,15 +897,15 @@ class BridgeRFV7(nn.Module):
         ]
         if missing or result.unexpected_keys:
             raise RuntimeError(
-                "[V7] Bridge checkpoint mismatch: "
+                "[RF] Bridge checkpoint mismatch: "
                 f"missing={missing[:5]}, unexpected={result.unexpected_keys[:5]}"
             )
         if result.missing_keys:
-            print("[V7b-adapter] Source adapter absent in checkpoint; kept zero initialized")
+            print("[source-conditioned RF-adapter] Source adapter absent in checkpoint; kept zero initialized")
 
     @staticmethod
     def _adapt_source_channels(state_dict, bridge):
-        """Zero-expand a V7a UNet conv_in state for fair V7b continuation."""
+        """Zero-expand a identity RF UNet conv_in state for fair source-conditioned RF continuation."""
         state_dict = dict(state_dict)
         key = "unet.conv_in.conv.weight"
         if key not in state_dict:
@@ -933,7 +921,7 @@ class BridgeRFV7(nn.Module):
             expanded = torch.zeros_like(new_weight, device=old_weight.device)
             expanded[:, :bridge.z_channels].copy_(old_weight)
             state_dict[key] = expanded
-            print("[V7b] Expanded UNet conv_in 4->8; z_src weights zero-initialized")
+            print("[source-conditioned RF] Expanded UNet conv_in 4->8; z_src weights zero-initialized")
             return state_dict
         raise RuntimeError(
             f"Cannot adapt {key} from {tuple(old_weight.shape)} to {tuple(new_weight.shape)}"
@@ -1011,7 +999,7 @@ def _weighted_axis_l1(prediction, target, weights, axis=-1):
     values_per_axis_cell = error.numel() / error.shape[axis]
     return weighted_error.sum() / (weights.sum() * values_per_axis_cell)
 
-def rf_loss_v7(
+def rectified_flow_loss(
     bridge,
     z_0,
     feats,
@@ -1028,7 +1016,7 @@ def rf_loss_v7(
     """Rectified Flow loss: L1(v_pred, v_target).
 
     Args:
-        bridge: BridgeRFV7.
+        bridge: FieldRFModel.
         z_0: (B, 4, 96³) clean target latent (unscaled).
         feats: list of 5 Brain-ID features.
         class_label: (B,) target class (0-14).

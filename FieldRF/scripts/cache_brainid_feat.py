@@ -6,18 +6,18 @@ a unified .b2nd storage format (one file per subject, native blosc2 container).
 Storage format:
   One .b2nd file per subject, containing all requested feats packed into a
   single 1D byte buffer.  Shape metadata is stored in the blosc2 `meta` dict,
-  so the loader (dataset_v4._load_feats_b2nd) can slice + reshape each feat.
+  so the loader (data.dataset._load_feats_b2nd) can slice + reshape each feat.
 
   blosc2.asarray(1D_buffer, meta={"shapes": {"feat0": [...], ...}, "dtype": "float16"})
 
 Modes (--feats):
-  all      : cache feat0-4 (default, for V4 multi-scale injection)
+  all      : cache feat0-4 (default, for RF multi-scale injection)
   0,1,2,3,4: cache specific levels (comma-separated, e.g. "3,4")
 
 feat4_pool:
   1 = keep feat4 at native 192^3 (64ch, 906 MB/subject)
   2 = avg_pool3d to 96^3 (64ch, 113 MB — 8x savings)
-  V4 only uses feat4 via source_proj which operates at 96^3,
+  RF only uses feat4 via source_proj which operates at 96^3,
   so pool=2 loses nothing and preserves field-invariance (avg_pool is
   field-agnostic, unlike a random-init stride-2 conv).
 
@@ -30,7 +30,7 @@ GPU utilization fixes:
 
 Usage:
   python scripts/cache_brainid_feat.py \\
-      --config configs/fieldrf_v7_stage1_3mod.yaml \\
+      --config configs/pretrain.yaml \\
       --split Training_retrospective \\
       --fields 0.1T 1.5T 3T \\
       --feats all --feat4_pool 2 \\
@@ -55,7 +55,7 @@ from BrainID.models import build_feat_model
 from utils.checkpoint import load_checkpoint
 import utils.misc as brainid_utils
 
-from data.dataset import FieldRFVolumeDataset
+from data.volume_dataset import VolumeDataset
 
 
 # ── GPU forward ── #
@@ -378,7 +378,7 @@ def main():
         field_dir = feat_root / str(field_val)
         field_dir.mkdir(parents=True, exist_ok=True)
 
-        ds = FieldRFVolumeDataset(
+        ds = VolumeDataset(
             data_cfg["data_root"], split,
             modality, str(field_val),
         )

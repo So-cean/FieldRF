@@ -1,6 +1,6 @@
-"""Paired cache dataset for V7 Stage-1 endpoint/cross-condition alignment.
+"""Paired cache dataset for RF Stage-1 endpoint/cross-condition alignment.
 
-The dataset is deliberately separate from ``PairedVisDatasetV6``: prospective
+The dataset is deliberately separate from ``PairedVisualizationDataset``: prospective
 pairs remain validation-only. Training pairs should be synthetic-source /
 real-target pairs cached with the same latent and Brain-ID formats as Stage 1.
 
@@ -30,8 +30,8 @@ from pathlib import Path
 
 import torch
 
-from data.dataset_v6 import _load_feats_b2nd, _load_latent
-from models.bridge_rf_v7 import get_class_label
+from data.dataset import _load_feats_b2nd, _load_latent
+from models.model import get_class_label
 
 
 _MANIFEST_COLUMNS = {
@@ -112,10 +112,10 @@ class PairedAlignmentCacheDataset(torch.utils.data.Dataset):
                 "caches or set paired_alignment.manifest. Prospective "
                 "validation pairs must not be substituted for training pairs. "
                 "To continue ordinary real-only Stage-1 RF training (without "
-                "endpoint alignment), use scripts/train_fieldrf_v7.py. To train "
+                "endpoint alignment), use scripts/train.py. To train "
                 "real-only unpaired endpoint distribution alignment, use "
-                "scripts/train_fieldrf_v7_unpaired_alignment.py with "
-                "configs/fieldrf_v7_unpaired_endpoint_alignment.yaml."
+                "scripts/train_endpoint_aligner.py with "
+                "configs/endpoint_alignment.yaml."
             )
 
     def _load_manifest(self, manifest: Path) -> None:

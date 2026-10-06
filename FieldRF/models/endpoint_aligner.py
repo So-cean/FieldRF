@@ -1,4 +1,4 @@
-"""Lightweight domain-conditioned residual adapter for V7 RF endpoints."""
+"""Lightweight domain-conditioned residual adapter for RF RF endpoints."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import torch
 from torch import nn
 
 
-class EndpointAlignerV7(nn.Module):
+class EndpointAligner(nn.Module):
     """Map real inversion endpoints toward a reference-domain distribution.
 
     The final convolution is zero initialized, so the initial mapping is

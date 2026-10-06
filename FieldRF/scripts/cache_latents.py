@@ -6,8 +6,8 @@ No sliding window needed. Encoder is compressive (384³→96³). Peak ~28GB on A
 Output: {cache_root}/{split}/latent/{modality}/{field}/{filename}.pt
 
 Usage:
-    python scripts/cache_latents.py --config configs/fieldrf_v7_stage1_3mod.yaml
-    python scripts/cache_latents.py --config configs/fieldrf_v7_stage1_3mod.yaml --split Training_prospective
+    python scripts/cache_latents.py --config configs/pretrain.yaml
+    python scripts/cache_latents.py --config configs/pretrain.yaml --split Training_prospective
 """
 import sys, argparse, time
 from pathlib import Path
@@ -15,7 +15,7 @@ from pathlib import Path
 import torch
 import yaml
 from monai.apps.generation.maisi.networks.autoencoderkl_maisi import AutoencoderKlMaisi
-from data.dataset import FieldRFVolumeDataset
+from data.volume_dataset import VolumeDataset
 
 
 def load_maisi_vae(checkpoint, device):
@@ -77,7 +77,7 @@ def main():
         field_dir = latent_root / str(field_val)
         field_dir.mkdir(parents=True, exist_ok=True)
 
-        ds = FieldRFVolumeDataset(data_cfg["data_root"], split,
+        ds = VolumeDataset(data_cfg["data_root"], split,
                              data_cfg["modality"], str(field_val))
         from torch.utils.data import DataLoader
         loader = DataLoader(ds, batch_size=1, shuffle=False, num_workers=0, pin_memory=True)

@@ -1,8 +1,23 @@
 # FieldRF
 
 Anatomy-conditioned 3D rectified flow with a shared model for three modalities
-and five field strengths. The maintained implementation uses the V7 RF and
-ControlNet architecture, unpaired pretraining and paired cross-field adaptation.
+and five field strengths. The maintained implementation uses rectified flow and
+ControlNet, unpaired pretraining and paired cross-field adaptation.
+
+## Code layout
+
+| File | Responsibility |
+|---|---|
+| `data/dataset.py` | Cached unpaired volumes, paired field adaptation and visualization pairs |
+| `data/volume_dataset.py` | Raw NIfTI volumes and preprocessing for cache generation |
+| `data/alignment_dataset.py` | Unpaired and synthetic endpoint-alignment datasets |
+| `models/model.py` | `FieldRFModel`, RF integration and training loss |
+| `models/endpoint_aligner.py` | `EndpointAligner`, shared domain-conditioned endpoint correction |
+| `utils/visualization.py` | VAE decoding, reference-grid metrics and rendering |
+
+Modules, class names, entry points and configuration names describe their roles.
+Experiment epochs and checkpoint filenames identify artifacts independently
+of the source-code layout.
 
 ## Dependencies and paths
 
@@ -24,21 +39,21 @@ paths under `/path/to/` must be replaced. Run the commands below from `FieldRF/`
 
 | Stage | Entry point | Configuration |
 |---|---|---|
-| MAISI latent cache | `scripts/cache_latents.py` | `configs/fieldrf_v7_stage1_3mod.yaml` |
+| MAISI latent cache | `scripts/cache_latents.py` | `configs/pretrain.yaml` |
 | Brain-ID feature cache | `scripts/cache_brainid_feat.py` | same pretraining configuration |
-| Shared unpaired RF pretraining | `scripts/train_fieldrf_v7.py` | `configs/fieldrf_v7_stage1_3mod.yaml` |
-| Unpaired endpoint alignment | `scripts/train_fieldrf_v7_unpaired_alignment.py` | `configs/fieldrf_v7_unpaired_endpoint_alignment.yaml` |
-| Shared VAE decoder adaptation | `scripts/train_vae_finetune.py` | `configs/vae_finetune.yaml` |
-| Paired RF adaptation | `scripts/train_fieldrf_v7_paired_finetune.py` | `configs/fieldrf_v7_paired_finetune.yaml` |
-| Inference | `scripts/infer_fieldrf_v7.py` | checkpoint and configured inference paths |
+| Shared unpaired RF pretraining | `scripts/train.py` | `configs/pretrain.yaml` |
+| Unpaired endpoint alignment | `scripts/train_endpoint_aligner.py` | `configs/endpoint_alignment.yaml` |
+| Shared VAE decoder adaptation | `scripts/finetune_vae.py` | `configs/vae_finetune.yaml` |
+| Paired RF adaptation | `scripts/finetune.py` | `configs/finetune.yaml` |
+| Inference | `scripts/inference.py` | checkpoint and configured inference paths |
 
 ```bash
-PYTHONPATH=. python scripts/cache_latents.py --config configs/fieldrf_v7_stage1_3mod.yaml
-PYTHONPATH=. python scripts/cache_brainid_feat.py --config configs/fieldrf_v7_stage1_3mod.yaml
-python scripts/train_fieldrf_v7.py --config configs/fieldrf_v7_stage1_3mod.yaml
-python scripts/train_fieldrf_v7_unpaired_alignment.py --config configs/fieldrf_v7_unpaired_endpoint_alignment.yaml
-python scripts/train_vae_finetune.py --config configs/vae_finetune.yaml
-python scripts/train_fieldrf_v7_paired_finetune.py --config configs/fieldrf_v7_paired_finetune.yaml
+PYTHONPATH=. python scripts/cache_latents.py --config configs/pretrain.yaml
+PYTHONPATH=. python scripts/cache_brainid_feat.py --config configs/pretrain.yaml
+python scripts/train.py --config configs/pretrain.yaml
+python scripts/train_endpoint_aligner.py --config configs/endpoint_alignment.yaml
+python scripts/finetune_vae.py --config configs/vae_finetune.yaml
+python scripts/finetune.py --config configs/finetune.yaml
 ```
 
 Before paired adaptation, set `finetune_from`, `endpoint_aligner_checkpoint` and
@@ -51,15 +66,15 @@ Paired adaptation uses `Training_prospective` only. Brain-ID and the VAE remain
 frozen during paired RF adaptation. The RF, ControlNet and endpoint adapter
 are shared across fields and modalities. The synthetic-alignment trainer is
 retained as a helper covered by regression tests, rather than the final recipe.
-V6 modules supply helper functions used by V7.
+
 
 ## Inference
 
 For shared Any-to-Any inference:
 
 ```bash
-python scripts/infer_fieldrf_v7.py \
-  --config configs/fieldrf_v7_paired_finetune.yaml \
+python scripts/inference.py \
+  --config configs/finetune.yaml \
   --checkpoint /path/to/paired_rf_checkpoint.pt \
   --vae_checkpoint /path/to/adapted_vae_decoder.pt \
   --source_endpoint_transport \
@@ -72,7 +87,7 @@ Inference reuses the same shared model for all requested translations and
 performs no test-time augmentation by default. Outputs use the sweep layout
 consumed by [the packaging tools](../mrix2026-cli/README.md).
 Existing checkpoints can retain their original filenames: the loader accepts
-explicit paths, and model class names and state-dict keys are preserved.
+explicit paths, and parameter layouts and state-dict keys are preserved.
 
 ## Tests
 

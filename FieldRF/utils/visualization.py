@@ -1,6 +1,6 @@
 """[FieldRF] Shared visualization utilities for epoch-end eval.
 
-Used by vis_fieldrf_rdb.py and vis_fieldrf_rf.py.
+Used by FieldRF training, inference and visualization entry points.
 """
 
 import csv
@@ -221,7 +221,7 @@ def archive_metrics_csvs(vis_dir: Path, patterns: list = None):
 
 
 # ────────────────────────────────────────────────────────────────────── #
-#  V3 evaluation-aligned vis helpers (decode-centered, eval-slice crop,
+#  RF evaluation-aligned vis helpers (decode-centered, eval-slice crop,
 #  torch metrics matching Evaluation/evaluate.py, original-image plot)
 # ────────────────────────────────────────────────────────────────────── #
 
@@ -232,7 +232,7 @@ from nibabel.orientations import io_orientation, axcodes2ornt, ornt_transform, a
 def decode_volume_centered(vae, z, sw_cfg, amp_dtype, z_center):
     """Decode a 64-slice image window centered at `z_center` (RAS 384-space).
 
-    Mirrors infer_fieldrf_v3.decode_volume_centered. Latent 96 -> image 384 (4x).
+    Centered decoding maps the 96³ latent grid to the 384³ image grid (4×).
     Returns (B, 1, 384, 384, 64) tensor in [-1, 1].
     """
     latent_z_slices = sw_cfg["roi_size"][2] // 4        # 64 -> 16 latent slices
@@ -398,9 +398,9 @@ def compute_metrics_eval(pred, target, slice_axis=2):
     }
 
 
-def render_vis_grid_v3(rows_data, title, save_path, epoch,
+def render_evaluation_grid(rows_data, title, save_path, epoch,
                        dec_label="dec", orig_label="orig", vae_label="vae"):
-    """V3 vis grid: Orig Source | Harm | Orig Target | Decoded Target.
+    """RF vis grid: Orig Source | Harm | Orig Target | Decoded Target.
 
     Each row is one (source_field -> target) pair. Metrics shown in the Harm
     column title:

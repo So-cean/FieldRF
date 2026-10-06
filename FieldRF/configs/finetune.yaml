@@ -1,0 +1,114 @@
+# Task3-aligned RF paired fine-tuning on the three prospective subjects.
+# All 180 real same-modality, cross-field ordered pairs enter the optimizer.
+# Cross-modality and identity records are excluded; target identity is trained
+# as the paired anchor branch of every cross-field record.
+
+finetune_from: runs/pretrain/fieldrf_epoch90.pt
+endpoint_aligner_checkpoint: runs/endpoint_alignment/fieldrf_unpaired_alignment_best.pt
+weight_source: ema
+output_dir: runs/paired_finetune
+
+data:
+  data_root: /path/to/MRIxFields2026
+  cache_root: /path/to/fieldrf_cache
+  split: Training_prospective
+  modalities: [T1W, T2W, T2FLAIR]
+  fields: [0.1T, 1.5T, 3T, 5T, 7T]
+  source_fields: [0.1T, 1.5T, 3T, 5T, 7T]
+  target_fields: [0.1T, 1.5T, 3T, 5T, 7T]
+  subjects: ["0006", "0007", "0009"]
+  feat_cache_name: brainid_feat
+  include_identity: false
+
+vae:
+  # Encoder is unchanged, so all latent caches remain valid. Deployment and
+  # validation must use the decoder-only epoch-1 finetune, especially for
+  # T2W/T2FLAIR; do not silently fall back to the original MAISI decoder.
+  checkpoint: runs/vae_finetune/vae_finetune_epoch1.pt
+  scale_factor: 1.0055984258651733
+  spatial_dims: 3
+  in_channels: 1
+  out_channels: 1
+  num_channels: [64, 128, 256]
+  num_res_blocks: [2, 2, 2]
+  norm_num_groups: 32
+  norm_eps: 1.0e-6
+  attention_levels: [false, false, false]
+  with_encoder_nonlocal_attn: false
+  with_decoder_nonlocal_attn: false
+  use_checkpointing: false
+  use_convtranspose: false
+  norm_float16: true
+  num_splits: 4
+  dim_split: 1
+  sliding_window:
+    roi_size: [384, 384, 64]
+    overlap: 0.5
+    mode: gaussian
+    sw_batch_size: 1
+    amp_dtype: float16
+
+bridge:
+  feat4_channels: 64
+  unet_channels: [64, 128, 256, 512]
+  num_res_blocks: [2, 2, 2, 2]
+  attention_levels: [false, false, true, true]
+  num_head_channels: [0, 0, 32, 32]
+  norm_num_groups: 32
+  norm_eps: 1.0e-6
+  conditioning_embedding_num_channels: [64, 64]
+  use_flash_attention: true
+  num_train_timesteps: 1000
+
+inversion:
+  steps: 20
+  solver: euler
+
+cross_rf:
+  weight: 1.0
+  endpoint_focus_probability: 0.5
+  endpoint_min_fraction: 0.7
+
+identity_rf:
+  weight: 0.25
+
+terminal_rollout:
+  weight: 1.0
+  every_steps: 4
+  steps: 20
+  gradient_steps: 2
+  edge_weight: 0.02
+  consistency_weight: 0.25
+
+train:
+  seed: 20260819
+  batch_size: 1
+  n_epochs: 20
+  lr: 2.0e-6
+  controlnet_lr_ratio: 0.5
+  endpoint_aligner_lr_ratio: 1.0
+  lr_min: 2.0e-7
+  warmup_epochs: 1.0
+  weight_decay: 0.0
+  grad_clip: 1.0
+  mixed_precision: bfloat16
+  ema_decay: 0.999
+  num_workers: 2
+  prefetch_factor: 2
+  log_every: 25
+
+inference:
+  n_infer_steps: 20
+  endpoint_transport:
+    enabled: true
+    inversion_steps: 20
+    inversion_solver: euler
+
+vis:
+  split: Training_prospective
+  any_to_any_subject: "0006"
+  any_to_any_inversion_steps: 20
+  any_to_any_generation_steps: 20
+  vis_every: 1
+  render_image_matrix: false
+  eval_slice_range: [150, 180]

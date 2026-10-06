@@ -1,0 +1,112 @@
+# FieldRF-identity RF Stage 1 Config (3-Modality) — Rectified Flow Bridge + ControlNet (feat4)
+# Stage 1: Rectified Flow L1 loss (no GAN, no graft).
+# Three-modality training: T1W + T2W + T2FLAIR all trained jointly.
+# Same architecture as T1W-only training: RF forward, [64,64] ControlNet, Euler ODE.
+# All other params (LR, bridge arch, VAE) identical to pretrain_t1w.yaml.
+#
+# Architecture:
+#   RF: z_t = (1-t/T)*z_0 + (t/T)*noise, v = z_0 - noise.
+#   Timestep-transform: scale=1.4, base=32³ (MAISI recipe).
+#   Loss: L1(v_pred, v_target).
+#   Inference: Euler ODE deterministic reverse (n_infer_steps subsampling).
+
+data:
+  data_root: /path/to/MRIxFields2026
+  split: Training_retrospective
+  modality: T1W              # single-modality fallback
+  modalities: [T1W, T2W, T2FLAIR]  # was [T1W] — now all 3
+  fields: [0.1T, 1.5T, 3T, 5T, 7T]
+  source_fields: [0.1T, 1.5T, 3T, 5T]
+  target_field: 7T
+  cache_root: /path/to/fieldrf_cache
+  feat_cache_name: brainid_feat  # b2nd format cache
+
+vae:
+  type: maisi
+  latent_channels: 4
+  checkpoint: /path/to/pretrained/autoencoder_v1.pt
+  scale_factor: 1.0055984258651733  # project-wide verified value (same as RF/RF)
+  spatial_dims: 3
+  in_channels: 1
+  out_channels: 1
+  num_channels: [64, 128, 256]
+  num_res_blocks: [2, 2, 2]
+  norm_num_groups: 32
+  norm_eps: 1.0e-6
+  attention_levels: [false, false, false]
+  with_encoder_nonlocal_attn: false
+  with_decoder_nonlocal_attn: false
+  use_checkpointing: false
+  use_convtranspose: false
+  norm_float16: true
+  num_splits: 4
+  dim_split: 1
+  sliding_window:
+    roi_size: [384, 384, 64]
+    overlap: 0.5
+    mode: gaussian
+    sw_batch_size: 1
+    amp_dtype: float16
+
+bridge:
+  name: "FieldRFModel"
+  ckpt_path: /path/to/pretrained/diff_unet_3d_rflow-mr-brain_v0.pt
+  feat4_channels: 64
+  out_channels: 4
+  unet_channels: [64, 128, 256, 512]
+  num_res_blocks: [2, 2, 2, 2]
+  attention_levels: [false, false, true, true]
+  num_head_channels: [0, 0, 32, 32]
+  norm_num_groups: 32
+  use_flash_attention: true
+  # RF parameters
+  num_train_timesteps: 1000
+  timestep_transform:
+    enabled: true
+    scale: 1.4
+    base_img_size_numel: 32768   # 32*32*32
+    spatial_dim: 3
+  controlnet:
+    conditioning_embedding_in_channels: 64
+    conditioning_embedding_num_channels: [64, 64]   # was [16, 64] in RF
+    random_init: true
+  # No SelfRDB parameters (n_steps, gamma, beta_start, beta_end removed)
+  ema:
+    enabled: true
+    decay: 0.999
+  sampling:
+    n_infer_steps: 20
+    method: "euler_ode"
+
+discriminator:
+  num_class_embeds: 15
+  base_channels: 64
+  n_layers: 3
+  use_instance_norm: true
+  use_spectral_norm: true
+
+train:
+  batch_size: 1
+  n_epochs: 100
+  lr: 0.0001
+  lr_min: 1.0e-6
+  warmup_epochs: 5
+  mixed_precision: bfloat16
+  save_every: 10
+  log_every: 50
+  num_workers: 8
+  prefetch_factor: 2
+  ema_decay: 0.999
+  adv:
+    enabled: false        # Stage 1: no GAN
+
+inference:
+  n_infer_steps: 20
+
+vis:
+  split: Training_prospective
+  n_samples: 1
+  vis_every: 1
+  eval_slice_range: [150, 180]
+
+output_dir: runs/pretrain

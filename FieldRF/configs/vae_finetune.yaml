@@ -71,6 +71,6 @@ vis:
   split: Validating_prospective  # validation split
   n_samples: 3                   # evaluate all 3 subjects per (modality, field)
   vis_every: 1                   # MUST be 1: per-epoch PNG+CSV required
-  eval_slice_range: [150, 180]   # 30-slice eval window (same as V4 vis)
+  eval_slice_range: [150, 180]   # 30-slice eval window (same as RF vis)
 
 output_dir: runs/vae_finetune
