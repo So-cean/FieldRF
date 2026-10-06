@@ -21,12 +21,21 @@ dependencies = [
     "scikit-image",
 ]
 
+[project.scripts]
+fieldrf-pretrain = "fieldrf.cli.train:main"
+fieldrf-align = "fieldrf.cli.train_endpoint_aligner:main"
+fieldrf-finetune = "fieldrf.cli.finetune:main"
+fieldrf-vae-finetune = "fieldrf.cli.finetune_vae:main"
+fieldrf-infer = "fieldrf.cli.inference:main"
+fieldrf-cache-latents = "fieldrf.cli.cache_latents:main"
+fieldrf-cache-brainid = "fieldrf.cli.cache_brainid_feat:main"
+
 [project.optional-dependencies]
 test = ["pytest"]
 brainid = ["torchvision", "pytorch-msssim", "SimpleITK", "iopath", "simplejson", "tabulate", "pytz", "visdom"]
 
 [tool.setuptools.packages.find]
-include = ["models", "data", "scripts", "utils", "configs"]
+include = ["fieldrf*"]
 
 [tool.setuptools.package-data]
 "*" = ["*.yaml", "*.py"]

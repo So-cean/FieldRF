@@ -12,8 +12,8 @@ from pathlib import Path
 
 import torch
 
-from data.dataset import _load_feats_b2nd, _load_latent
-from utils.domains import get_class_label
+from fieldrf.data.dataset import _load_feats_b2nd, _load_latent
+from fieldrf.utils.domains import get_class_label
 
 
 class UnpairedEndpointAlignmentDataset(torch.utils.data.Dataset):

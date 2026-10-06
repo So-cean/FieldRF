@@ -7,7 +7,7 @@ unchanged when components move between source files.
 
 import torch
 
-from utils.domains import NUM_CLASSES
+from fieldrf.utils.domains import NUM_CLASSES
 
 
 def load_vae_checkpoint(vae, checkpoint_path, map_location="cpu"):

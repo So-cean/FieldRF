@@ -23,8 +23,8 @@ from monai.transforms import (
     SpatialPadd, CenterSpatialCropd, ScaleIntensityRanged, EnsureTyped,
 )
 from skimage.metrics import structural_similarity
-from models.checkpoint import load_vae_checkpoint
-from data.volume_dataset import list_nifti_files
+from fieldrf.models.checkpoint import load_vae_checkpoint
+from fieldrf.data.volume_dataset import list_nifti_files
 
 TARGET_SIZE = (384, 384, 384)
 

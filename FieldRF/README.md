@@ -8,19 +8,19 @@ ControlNet, unpaired pretraining and paired cross-field adaptation.
 
 | File | Responsibility |
 |---|---|
-| `data/dataset.py` | Cached unpaired volumes, paired field adaptation and visualization pairs |
-| `data/volume_dataset.py` | Raw NIfTI volumes and preprocessing for cache generation |
-| `data/alignment_dataset.py` | Real unpaired samples for endpoint-distribution alignment |
-| `models/model.py` | `FieldRFModel`, network assembly and velocity prediction |
-| `models/networks.py` | Gradient-safe MAISI UNet and source-latent adapter |
-| `models/rectified_flow.py` | Timestep remapping, RF paths and training velocity targets |
-| `models/sampling.py` | Euler/Heun inversion, reverse sampling and differentiable graft generation |
-| `models/checkpoint.py` | Strict VAE/pretrained/full RF loading, EMA restoration and source-channel adaptation |
-| `models/losses.py` | RF velocity loss, spatially weighted supervision and paired latent/gradient loss |
-| `models/endpoint_aligner.py` | `EndpointAligner`, shared domain-conditioned endpoint correction |
-| `utils/domains.py` | Modality/field labels shared by data and models |
-| `utils/diagnostics.py` | ControlNet and source-path training-log diagnostics |
-| `utils/visualization.py` | VAE decoding, reference-grid metrics and rendering |
+| `fieldrf/data/dataset.py` | Cached unpaired volumes, paired field adaptation and visualization pairs |
+| `fieldrf/data/volume_dataset.py` | Raw NIfTI volumes and preprocessing for cache generation |
+| `fieldrf/data/alignment_dataset.py` | Real unpaired samples for endpoint-distribution alignment |
+| `fieldrf/models/model.py` | `FieldRFModel`, network assembly and velocity prediction |
+| `fieldrf/models/networks.py` | Gradient-safe MAISI UNet and source-latent adapter |
+| `fieldrf/models/rectified_flow.py` | Timestep remapping, RF paths and training velocity targets |
+| `fieldrf/models/sampling.py` | Euler/Heun inversion, reverse sampling and differentiable graft generation |
+| `fieldrf/models/checkpoint.py` | Strict VAE/pretrained/full RF loading, EMA restoration and source-channel adaptation |
+| `fieldrf/models/losses.py` | RF velocity loss, spatially weighted supervision and paired latent/gradient loss |
+| `fieldrf/models/endpoint_aligner.py` | `EndpointAligner`, shared domain-conditioned endpoint correction |
+| `fieldrf/utils/domains.py` | Modality/field labels shared by data and models |
+| `fieldrf/utils/diagnostics.py` | ControlNet and source-path training-log diagnostics |
+| `fieldrf/utils/visualization.py` | VAE decoding, reference-grid metrics and rendering |
 
 Modules, class names, entry points and configuration names describe their roles.
 Experiment epochs and checkpoint filenames identify artifacts independently
@@ -29,13 +29,17 @@ and loading methods as thin delegates. The UNet, ControlNet, source adapter and
 spacing buffer retain their state-dict names, so existing weights remain usable.
 Data modules import domain labels without loading the model architecture.
 
+The installed Python package is `fieldrf`. Public scripts remain compatible
+entry points; `fieldrf.cli` parses arguments and `fieldrf.training` owns the
+training stages. Stage visualization lives in `fieldrf.visualization`.
+
 ## Dataset roles
 
 `dataset.py` is a module containing several dataset classes, rather than a
 single dataset type. RF and endpoint-aligner training read cached MAISI
 latents and Brain-ID features. `VolumeDataset` supplies raw NIfTI volumes
 to the cache writers. VAE decoder adaptation has a separate `LatentImageDataset`
-in `scripts/finetune_vae.py`, which matches cached latents to raw image patches.
+in the VAE training module, which matches cached latents to raw image patches.
 
 | Class | Input and sampling | Consumer |
 |---|---|---|

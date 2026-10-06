@@ -15,15 +15,15 @@ import yaml
 
 FIELDRF_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(FIELDRF_ROOT))
-from data.dataset import _load_feats_b2nd, _load_latent
-from models.model import FieldRFModel
+from fieldrf.data.dataset import _load_feats_b2nd, _load_latent
+from fieldrf.models.model import FieldRFModel
 
 spec = importlib.util.spec_from_file_location(
-    "fieldrf_feature_cache", FIELDRF_ROOT / "scripts/cache_brainid_feat.py"
+    "fieldrf_feature_cache", FIELDRF_ROOT / "fieldrf/cli/cache_brainid_feat.py"
 )
 feature_cache = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(feature_cache)
-from scripts.cache_latents import _save_latent
+from fieldrf.cli.cache_latents import _save_latent
 
 
 class CachePipelineTests(unittest.TestCase):
@@ -37,7 +37,7 @@ class CachePipelineTests(unittest.TestCase):
                 Path(temporary).write_bytes(b"partial")
                 raise OSError("interrupted write")
 
-            with patch("scripts.cache_latents.torch.save", side_effect=interrupted_save):
+            with patch("fieldrf.cli.cache_latents.torch.save", side_effect=interrupted_save):
                 with self.assertRaisesRegex(OSError, "interrupted write"):
                     _save_latent({"latent": torch.zeros(1)}, path)
             self.assertEqual(path.read_bytes(), previous)

@@ -8,10 +8,10 @@ import unittest
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from models.model import FieldRFModel  # noqa: E402
-from models.endpoint_aligner import EndpointAligner
-from scripts.inference import load_endpoint_aligner, resolve_inversion
-from models.checkpoint import load_vae_checkpoint
+from fieldrf.models.model import FieldRFModel  # noqa: E402
+from fieldrf.models.endpoint_aligner import EndpointAligner
+from fieldrf.cli.inference import load_endpoint_aligner, resolve_inversion
+from fieldrf.models.checkpoint import load_vae_checkpoint
 
 
 MODEL_OPTIONS = dict(

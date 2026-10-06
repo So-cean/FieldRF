@@ -11,7 +11,7 @@ from pathlib import Path
 FIELDRF_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(FIELDRF_ROOT))
 
-from data.dataset import (  # noqa: E402
+from fieldrf.data.dataset import (  # noqa: E402
     PairedFieldDataset,
 )
 

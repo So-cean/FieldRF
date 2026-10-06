@@ -14,8 +14,8 @@ from . import checkpoint, rectified_flow, sampling
 # Retain existing helper imports for external scripts; maintained callers use
 # the defining modules directly.
 from .rectified_flow import timestep_transform
-from utils.domains import FIELDS, MODALITIES, NUM_CLASSES, get_class_label
-from utils.diagnostics import controlnet_norms, source_channel_norms
+from fieldrf.utils.domains import FIELDS, MODALITIES, NUM_CLASSES, get_class_label
+from fieldrf.utils.diagnostics import controlnet_norms, source_channel_norms
 
 
 class FieldRFModel(nn.Module):

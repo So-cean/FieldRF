@@ -14,10 +14,10 @@ import torch
 FIELDRF_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(FIELDRF_ROOT))
 
-from data.alignment_dataset import UnpairedEndpointAlignmentDataset
-from models.endpoint_aligner import EndpointAligner
-from models.model import FieldRFModel
-from utils.endpoint_alignment import (
+from fieldrf.data.alignment_dataset import UnpairedEndpointAlignmentDataset
+from fieldrf.models.endpoint_aligner import EndpointAligner
+from fieldrf.models.model import FieldRFModel
+from fieldrf.utils.endpoint_alignment import (
     alignment_weight,
     endpoint_moment_loss,
     multiscale_patch_coral,
