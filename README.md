@@ -52,9 +52,9 @@ MONAI supplies the MAISI networks. Its original VAE weights are required for
 latent generation, and a decoder checkpoint is required for visualization and
 inference.
 
-The CPU tests use synthetic caches and therefore do not establish that external
-weights or full-volume feature extraction work. See the
-[tested environment and verification scope](REPRODUCIBILITY.md).
+The CPU tests use synthetic fixtures. A separate GPU check exercises the
+official pretrained weights and full-resolution caches on real MRI volumes;
+see the [tested environment and verification scope](REPRODUCIBILITY.md).
 
 ## Reproduction pipeline
 
@@ -254,8 +254,45 @@ An epoch-20 checkpoint and the best validation checkpoint are different
 selection rules. After the configured 20-epoch run, `fieldrf_paired_latest.pt`
 contains the epoch-20 RF EMA. Use the epoch-1 adapted VAE consistently for
 paired adaptation and inference; the original MAISI decoder changes the
-protocol. These commands describe the released recipe; full benchmark results
-have not been remeasured by the CPU audit.
+protocol. These commands describe the released recipe; the short pipeline check
+below does not establish full-training benchmark results.
+
+### 5. Check the pipeline on a small real-data subset
+
+Before a full run, make local copies of the four YAML files under `tmp/` and use
+separate data, cache and output directories. Keep the full architecture and
+official pretrained weights. Use one real volume per modality and field in each
+of the three splits (45 inputs total), with the same prospective subject ID
+across all fields for paired training. Set `data.subjects` in the paired config
+to that subject; preserve the other split roles described above.
+
+Generate both caches as in step 3, using the smoke pretraining config. Set
+`finetune_from` in both downstream RF configs to the smoke run's
+`fieldrf_epoch1.pt`, set the aligner path to the smoke alignment artifact, and
+set the paired VAE path to the smoke decoder's `vae_finetune_epoch1.pt`.
+Use small worker counts, set pretraining `vis.vis_every` above 1 to skip its
+optional image rendering, and set VAE validation `vis.n_samples: 1`. From the
+method directory, run the public entry points:
+
+```bash
+python scripts/train.py --config ../tmp/smoke/pretrain.yaml \
+  --n_epochs 1 --max_volumes 1
+python scripts/train_endpoint_aligner.py \
+  --config ../tmp/smoke/endpoint_alignment.yaml --n_epochs 1 --max_volumes 1
+python scripts/finetune_vae.py --config ../tmp/smoke/vae_finetune.yaml \
+  --epochs 1 --max_volumes 1
+python scripts/finetune.py --config ../tmp/smoke/finetune.yaml \
+  --n_epochs 1 --skip_vis
+```
+
+Use the inference command below with these smoke artifacts and `--epoch_tag
+epoch1`. Add `--target_fields 0.1T 7T` for 24 non-identity outputs covering all
+five source fields and all three modalities. Also test the optional
+`--source_endpoint_transport` branch separately. Verify that every cache is
+present and finite, the checkpoints contain optimizer state, and the decoded
+NIfTI files are finite, nonempty and preserve the source shape and affine.
+Check that the adapted VAE encoder is unchanged and its decoder has updated.
+Keep smoke artifacts separate from the full experiment.
 
 ## Inference
 
@@ -310,15 +347,39 @@ Two additional CLI tests check submission ZIP layout. The tests cover data
 pairing, RF/spatial losses, sampling/autograd, cache generation and a real MONAI
 network's training/checkpoint round trip with synthetic fixtures. See the
 [test inventory](FieldRF/README.md#cpu-regression-tests). Full experiment
-reproduction follows the [method guide](FieldRF/README.md).
-
-Training and inference require the external data, cached representations and
-weights described in the method guide. A pretrained checkpoint can be loaded
-by specifying its existing filename; model parameter keys are unchanged.
-Inference uses no test-time augmentation by default.
-
-See [the method guide](FieldRF/README.md) for the pipeline and
+reproduction follows the [pipeline above](#reproduction-pipeline), using its
+external data, weights and both caches. See
 [reference evaluation](Evaluation/README.md) for metric definitions.
+
+### Verified real-data GPU pipeline
+
+On 2026-10-06, a fresh recursive remote clone passed the complete short pipeline
+on one A100 80GB, using official pretrained weights and **45 real MRI volumes**
+covering all three splits, three modalities and five fields. The full network
+and native cache geometry were used; only the dataset size, training duration
+and diagnostic frequency were reduced.
+
+| Stage | Verified work |
+|---|---|
+| MAISI latent cache | 45 new `(4,96,96,96)` caches |
+| Brain-ID feature cache | 45 new native `(64,192,192,192)` `feat4` caches |
+| RF pretraining | 1 epoch, 15 optimization steps |
+| Endpoint alignment | 1 epoch, 12 optimization steps; one paired training-split diagnostic |
+| VAE decoder adaptation | 15 minibatches, 2 accumulated optimizer steps; 15 validation volumes |
+| Paired RF adaptation | 1 complete subject, 60 ordered cross-field pairs; 15 terminal-rollout updates |
+| Joint RF/aligner EMA inference | 24 outputs: all source fields/modalities into `0.1T` and `7T`, excluding identity |
+| Source transport without aligner | One additional T1W `0.1T` to `7T` output |
+
+All 90 caches and checkpoint weights were finite. Optimizer state was populated;
+the adapted VAE encoder remained bitwise unchanged and its decoder changed.
+All 25 decoded NIfTI outputs were finite, nonempty, normalized to `[0,1]`, and
+preserved their source shape and affine. Inversion and generation each used
+20 Euler steps. The CPU regression run passed **36 tests with 4 subtests**.
+
+This verifies the real-data execution path and artifact consistency. Full
+training duration, all five target-field sweeps, benchmark metrics and NPU/DDP
+remain outside this check. See [the validation record](REPRODUCIBILITY.md) for
+source revisions, environment details and initialization compatibility.
 
 ## Acknowledgements and citations
 
