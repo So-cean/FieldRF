@@ -144,6 +144,43 @@ Follow the [complete reproduction procedure](README.md#reproduction-pipeline)
 for submodule initialization, weight acquisition, YAML paths, both cache writers,
 the split requirements and downstream checkpoint selection.
 
+## Run an isolated small-data check
+
+Before a full run, make local copies of the four YAML files under `tmp/` and use
+separate data, cache and output directories. Keep the full architecture and
+official pretrained weights. Use one real volume per modality and field in each
+of the three splits (45 inputs total), with the same prospective subject ID
+across all fields for paired training. Set `data.subjects` in the paired config
+to that subject; preserve the other split roles described above.
+
+Generate both caches with the [homepage cache commands](README.md#3-generate-both-caches-for-every-required-split), using the smoke pretraining config. Set
+`finetune_from` in both downstream RF configs to the smoke run's
+`fieldrf_epoch1.pt`, set the aligner path to the smoke alignment artifact, and
+set the paired VAE path to the smoke decoder's `vae_finetune_epoch1.pt`.
+Use small worker counts, set pretraining `vis.vis_every` above 1 to skip its
+optional image rendering, and set VAE validation `vis.n_samples: 1`. From the
+method directory, run the public entry points:
+
+```bash
+python scripts/train.py --config ../tmp/smoke/pretrain.yaml \
+  --n_epochs 1 --max_volumes 1
+python scripts/train_endpoint_aligner.py \
+  --config ../tmp/smoke/endpoint_alignment.yaml --n_epochs 1 --max_volumes 1
+python scripts/finetune_vae.py --config ../tmp/smoke/vae_finetune.yaml \
+  --epochs 1 --max_volumes 1
+python scripts/finetune.py --config ../tmp/smoke/finetune.yaml \
+  --n_epochs 1 --skip_vis
+```
+
+Use the [homepage inference command](README.md#inference) with these smoke artifacts and `--epoch_tag epoch1`. Add `--target_fields 0.1T 7T` for 24 non-identity outputs covering all
+five source fields and all three modalities. Also test the optional
+`--source_endpoint_transport` branch separately. Verify that every cache is
+present and finite, the checkpoints contain optimizer state, and the decoded
+NIfTI files are finite, nonempty and preserve the source shape and affine.
+Check that the adapted VAE encoder is unchanged and its decoder has updated.
+Keep smoke artifacts separate from the full experiment.
+
+
 ## Remaining limits
 
 The short run checks execution and artifact consistency on real inputs. It

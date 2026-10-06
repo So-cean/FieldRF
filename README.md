@@ -2,114 +2,50 @@
 
 **Paper:** [FieldRF: Anatomy-Conditioned 3D Rectified Flow for Unified Cross-Field MRI Harmonization](https://papers.miccai.org/miccai-2026-sat/paper/MRIxFields2026_026.pdf)
 
-Anatomy-conditioned 3D rectified flow for cross-field MRI harmonization.
-FieldRF uses one shared model across **T1W, T2W and T2FLAIR** and five field
-strengths: **0.1T, 1.5T, 3T, 5T and 7T**.
+Anatomy-conditioned 3D rectified flow for cross-field MRI harmonization, with one
+shared model for **T1W, T2W, T2FLAIR** and **0.1T, 1.5T, 3T, 5T, 7T**.
 
-The pipeline combines a MAISI latent representation, frozen Brain-ID anatomical
-features, a shared rectified-flow network and paired cross-field adaptation.
-**The supplied configurations require both MAISI latent caches and Brain-ID
-feature caches.** Brain-ID source is a pinned Git submodule; its pretrained
-weights and the MAISI weights must be downloaded separately. See the
-[complete cache and training procedure](#reproduction-pipeline).
+![FieldRF pipeline: unpaired training, paired fine-tuning and cross-field inference](assets/fieldrf_pipeline.png)
 
-![FieldRF pipeline: unpaired rectified-flow training, paired fine-tuning and cross-field MRI harmonization](assets/fieldrf_pipeline.png)
-
-*Pipeline overview from the paper.*
-
-| Directory | Contents |
-|---|---|
-| [FieldRF/](FieldRF/README.md) | Models, data loaders, configurations, training, inference and tests |
-| [Baseline/](Baseline/README.md) | CUT, CycleGAN, StarGANv2 and other comparison methods |
-| [Evaluation/](Evaluation/README.md) | Reference evaluation implementation |
-| [Submission/](Submission/README.md) | Validation submission format and packaging |
-| [mrix2026-cli/](mrix2026-cli/README.md) | Segmentation, building, checking and ZIP utilities |
-
-## Getting started
-
-```bash
-git clone --recurse-submodules https://github.com/So-cean/FieldRF.git
-cd FieldRF
-# For an existing clone, or a clone made without --recurse-submodules:
-git submodule update --init --recursive
-```
-
-1. Configure PyTorch/torchvision for your hardware, then install
-   `requirements.txt`; see [setup](docs/README.md). It includes the Python
-   libraries needed by the frozen Brain-ID feature extractor.
-2. Obtain the MRI dataset, the original MAISI VAE/RF weights and the
-   [Brain-ID pretrained weights](https://github.com/jhuldr/Brain-ID/blob/5d8a2d3eef507180b0cbff4cfe418cdfc5c55253/README.md#playing-with-brain-id-synthesizer-and-feature-extractor).
-3. Set the paths in the four `FieldRF/configs/` files as described in the
-   [configuration checklist](#2-configure-data-and-artifact-paths).
-4. Generate **both caches for all three dataset splits**, then run pretraining,
-   endpoint alignment, decoder adaptation and paired adaptation in the
-   [reproduction guide](#reproduction-pipeline).
-
-For baseline runs, copy `.env.example` to `.env`, configure local paths, and
-follow the [baseline guide](Baseline/README.md).
-
-## Dependencies and paths
-
-**The supplied recipe is Brain-ID conditioned.** Every RF training stage reads
-both a MAISI latent and a Brain-ID `feat4` cache for each volume. Brain-ID source
-and its pretrained checkpoint are required to **generate** the feature caches;
-RF training and inference read those caches without running Brain-ID again.
-MONAI supplies the MAISI networks. Its original VAE weights are required for
-latent generation, and a decoder checkpoint is required for visualization and
-inference.
-
-The CPU tests use synthetic fixtures. A separate GPU check exercises the
-official pretrained weights and full-resolution caches on real MRI volumes;
-see the [tested environment and verification scope](REPRODUCIBILITY.md).
+[Method and code layout](FieldRF/README.md) · [Baselines](Baseline/README.md) ·
+[Evaluation](Evaluation/README.md) · [Submission](Submission/README.md) ·
+[Packaging CLI](mrix2026-cli/README.md)
 
 ## Reproduction pipeline
 
 ### 1. Obtain source, dependencies and pretrained weights
 
-Run this setup from the **repository root**, which contains `requirements.txt`:
+Run setup from the repository root. Configure PyTorch/torchvision for your
+hardware first; `requirements.txt` does not pin PyTorch or CUDA.
 
 ```bash
+git clone --recurse-submodules https://github.com/So-cean/FieldRF.git
+cd FieldRF
+# Also run this for an existing clone:
 git submodule update --init --recursive
-# Configure PyTorch/torchvision for your hardware first.
 python -m pip install -r requirements.txt
 ```
 
-The `third_party/Brain-ID` submodule pins the public
-[Brain-ID source at `5d8a2d3`](https://github.com/jhuldr/Brain-ID/tree/5d8a2d3eef507180b0cbff4cfe418cdfc5c55253).
-The feature writer finds this path automatically. To use another checkout, set
-`BRAINID_ROOT` to its absolute path; doing so changes the source dependency.
-Cloning this repository with `--recurse-submodules` initializes it automatically;
-downloading a GitHub source ZIP does not fetch submodules.
+Brain-ID source is pinned at
+[`5d8a2d3`](https://github.com/jhuldr/Brain-ID/tree/5d8a2d3eef507180b0cbff4cfe418cdfc5c55253)
+in `third_party/Brain-ID` and located automatically (`BRAINID_ROOT` overrides it).
+Use this repository's requirements for feature extraction; upstream Brain-ID
+requirements pin its older training stack. See [setup](docs/README.md) for
+package and CLI installation.
 
-The root requirements include the frozen extractor's import dependencies
-(`iopath`, `simplejson`, `tabulate`, `pytz`, `visdom`, plus the shared imaging
-libraries). Use these requirements for this pipeline; the upstream Brain-ID
-requirements describe its older full training stack and pin PyTorch versions.
-See [setup](docs/README.md) for package and CLI installation options.
+Obtain the [MRIxFields2026 data](https://github.com/MRIxFields/MRIxFields2026)
+and download these weights separately:
 
-Download the following pretrained files separately. Their filenames identify
-upstream weight releases, independently of the FieldRF source layout.
-
-| Artifact | Download source | Configuration |
+| Weights | Source | YAML setting |
 |---|---|---|
-| `brain_id_pretrained.pth` | The weights folder linked in the [Brain-ID feature-extractor demo](https://github.com/jhuldr/Brain-ID/blob/5d8a2d3eef507180b0cbff4cfe418cdfc5c55253/README.md#playing-with-brain-id-synthesizer-and-feature-extractor) | `brainid.ckpt_path` in `pretrain.yaml` |
-| `autoencoder_v1.pt` | [Shared MAISI VAE, NVIDIA release `4156648`](https://huggingface.co/nvidia/NV-Generate-CT/blob/4156648ce44f5561b75d96b12600fe5afe6b6e8f/models/autoencoder_v1.pt) | `vae.checkpoint` in pretraining, endpoint alignment and VAE adaptation |
-| `diff_unet_3d_rflow-mr-brain_v0.pt` | [Brain-MRI RF, NVIDIA release `67ba36a`](https://huggingface.co/nvidia/NV-Generate-MR-Brain/blob/67ba36a4d3aae5854d7f2f56638e26a641684433/models/diff_unet_3d_rflow-mr-brain_v0.pt) | `bridge.ckpt_path` in `pretrain.yaml` |
+| `brain_id_pretrained.pth` | [Brain-ID pretrained weights](https://github.com/jhuldr/Brain-ID/blob/5d8a2d3eef507180b0cbff4cfe418cdfc5c55253/README.md#playing-with-brain-id-synthesizer-and-feature-extractor) | `brainid.ckpt_path` in `pretrain.yaml` |
+| `autoencoder_v1.pt` | [MAISI VAE, release `4156648`](https://huggingface.co/nvidia/NV-Generate-CT/blob/4156648ce44f5561b75d96b12600fe5afe6b6e8f/models/autoencoder_v1.pt) | `vae.checkpoint` in pretraining, alignment and VAE adaptation |
+| `diff_unet_3d_rflow-mr-brain_v0.pt` | [MAISI brain RF, release `67ba36a`](https://huggingface.co/nvidia/NV-Generate-MR-Brain/blob/67ba36a4d3aae5854d7f2f56638e26a641684433/models/diff_unet_3d_rflow-mr-brain_v0.pt) | `bridge.ckpt_path` in `pretrain.yaml` |
 
-The released brain RF checkpoint uses residual down/up-sampling and learned attention output projections.
-The loader infers these architecture settings from its parameters, restores every pretrained UNet
-parameter except the intentionally replaced MRI-domain embedding, and rejects
-missing or unexpected network parameters. Legacy FieldRF checkpoints retain
-their original convolutional resampling through the same inference mechanism.
-New checkpoints record the resolved architecture. A run that only prints
-parameter-mismatch warnings is not a successful pretrained initialization.
-
-Record the download revisions and checksums. Replacing the RF initialization
-with a newer upstream release changes this recipe. MRI volumes, pretrained
-weights, generated caches and trained FieldRF checkpoints are not bundled.
-The VAE is distributed in NVIDIA's shared CT model repository; the brain-MRI
-repository supplies the RF checkpoint. The two linked upstream releases publish
-these SHA-256 values for checking your downloads:
+Keep these weight revisions when following the recipe. The loader detects the
+pretrained UNet architecture and rejects partial loading; the MRI-domain
+embedding is intentionally replaced. Data, caches and model weights are not
+bundled. The linked MAISI releases provide these SHA-256 checksums:
 
 ```text
 1f8a7a056d0ebc00486edc43c26768bf1c12eaa6df9dd172e34598003be95eb3  autoencoder_v1.pt
@@ -118,54 +54,23 @@ b49aa3162ff94b1852f81e520ed4165c5656000ba176c033063c35350b3305e9  diff_unet_3d_r
 
 ### 2. Configure data and artifact paths
 
-Obtain the challenge data through
-[MRIxFields2026](https://github.com/MRIxFields/MRIxFields2026). Set
-`data.data_root` to the directory containing the split folders, not their parent:
+Edit the four files in `FieldRF/configs/`: `pretrain.yaml`,
+`endpoint_alignment.yaml`, `vae_finetune.yaml` and `finetune.yaml`.
+Replace every `/path/to/` placeholder, set the weight paths above, and use the
+same absolute `data.data_root` and `data.cache_root` throughout. Keep the supplied
+architecture, modalities, fields and `feat_cache_name: brainid_feat`.
+
+The data root must contain:
 
 ```text
-/path/to/MRIxFields2026/
-  Training_retrospective/{T1W,T2W,T2FLAIR}/{0.1T,1.5T,3T,5T,7T}/*.nii.gz
-  Training_prospective/{T1W,T2W,T2FLAIR}/{0.1T,1.5T,3T,5T,7T}/*.nii.gz
-  Validating_prospective/{T1W,T2W,T2FLAIR}/{0.1T,1.5T,3T,5T,7T}/*.nii.gz
+Training_retrospective/{T1W,T2W,T2FLAIR}/{0.1T,1.5T,3T,5T,7T}/*.nii.gz
+Training_prospective/{T1W,T2W,T2FLAIR}/{0.1T,1.5T,3T,5T,7T}/*.nii.gz
+Validating_prospective/{T1W,T2W,T2FLAIR}/{0.1T,1.5T,3T,5T,7T}/*.nii.gz
 ```
 
-Set the same absolute `data.data_root` and `data.cache_root` in **all four**
-configuration files. Replace every `/path/to/` placeholder. The pretraining
-configuration must include:
-
-```yaml
-data:
-  data_root: /path/to/MRIxFields2026
-  cache_root: /path/to/fieldrf_cache
-  modalities: [T1W, T2W, T2FLAIR]
-  fields: [0.1T, 1.5T, 3T, 5T, 7T]
-  feat_cache_name: brainid_feat
-brainid:
-  ckpt_path: /path/to/pretrained/brain_id_pretrained.pth
-vae:
-  checkpoint: /path/to/pretrained/autoencoder_v1.pt
-bridge:
-  ckpt_path: /path/to/pretrained/diff_unet_3d_rflow-mr-brain_v0.pt
-```
-
-This is a path checklist, not a replacement for the full network/training YAML.
-Keep the supplied architecture settings. Complete the downstream paths as their
-artifacts are produced:
-
-| Configuration | Required artifact paths |
-|---|---|
-| `pretrain.yaml` | Original VAE, original MAISI RF and Brain-ID weights |
-| `endpoint_alignment.yaml` | `finetune_from: runs/pretrain/fieldrf_epoch90.pt`; original VAE |
-| `vae_finetune.yaml` | Original VAE to adapt; same raw data and latent caches |
-| `finetune.yaml` | Same epoch-90 RF base; `endpoint_aligner_checkpoint: runs/endpoint_alignment/fieldrf_unpaired_alignment_best.pt`; `vae.checkpoint: runs/vae_finetune/vae_finetune_epoch1.pt` |
-
-The endpoint aligner records its RF base checkpoint path; paired adaptation
-checks that it matches `finetune_from`. Preserve that relationship when relocating
-artifacts. The paired config's subject IDs must match the released prospective
-training subjects. Validation cases do not enter the optimizer.
-
-For **all subsequent commands**, enter the method directory from the repository
-root:
+The downstream checkpoint settings are listed in step 4. Paired training's
+`data.subjects` must match the prospective training IDs. For all remaining
+cache, training and inference commands, enter the method directory:
 
 ```bash
 cd FieldRF
@@ -173,16 +78,18 @@ cd FieldRF
 
 ### 3. Generate both caches for every required split
 
-Cache generation processes all three `data.modalities` and all five
-`data.fields` by default. The three splits have different roles:
+**The supplied recipe requires MAISI latents and Brain-ID features for every
+volume.** Brain-ID source/weights are needed for caching; subsequent RF training
+and inference read the caches without running Brain-ID again.
 
-| Split | Cache consumers |
+| Split | Used by |
 |---|---|
-| `Training_retrospective` | Unpaired RF pretraining, endpoint alignment and VAE decoder adaptation |
-| `Training_prospective` | Paired RF adaptation and training-time visualization/diagnostics |
-| `Validating_prospective` | VAE validation and challenge validation inference |
+| `Training_retrospective` | RF pretraining, endpoint alignment, VAE adaptation |
+| `Training_prospective` | Paired RF adaptation and training diagnostics |
+| `Validating_prospective` | VAE validation and inference |
 
-Run the two writers for **each** split on a suitably sized CUDA GPU:
+On a suitably sized CUDA GPU, generate both caches for all three modalities and
+five fields in each split:
 
 ```bash
 for split in Training_retrospective Training_prospective Validating_prospective; do
@@ -193,47 +100,25 @@ for split in Training_retrospective Training_prospective Validating_prospective;
 done
 ```
 
-Brain-ID's upstream loader uses the older `torch.load` behavior for a checkpoint
-containing configuration objects. On PyTorch 2.6 or later, the command-scoped
-`TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD=1` setting restores that behavior for the
-**official pretrained checkpoint**. It does not change your PyTorch installation
-or persist beyond that feature-cache command.
+The command-scoped environment setting supports Brain-ID's official legacy
+checkpoint loader on PyTorch 2.6+. A preprocessed `384³` image yields a
+`(4,96,96,96)` latent. Brain-ID processes it at `192³` in `[0,1]`; the supplied
+`[64,64]` ControlNet requires native `(64,192,192,192)` `feat4` (`feat4_pool=1`).
 
-MAISI encodes a preprocessed `384³` image as a `(4,96,96,96)` latent. Brain-ID
-receives the same image resized to `192³` and mapped to `[0,1]`. The current
-`[64,64]` ControlNet conditioning pyramid requires native
-`(64,192,192,192)` `feat4`, so use `--feats 4` and the automatically derived
-`feat4_pool=1`. A single-level `[64]` conditioning pyramid would require `pool=2`.
-Existing pooled caches must match the selected architecture; changing cache
-geometry requires a different cache location or explicit regeneration.
-
-Each volume produces the following two files, preserving its NIfTI stem:
+Each input stem must have both files:
 
 ```text
-/path/to/fieldrf_cache/
-  Training_retrospective/
-    latent/T1W/0.1T/R_T1W_0.1T_0001.pt
-    brainid_feat/T1W/0.1T/R_T1W_0.1T_0001.b2nd
-  Training_prospective/
-    latent/T1W/0.1T/P_T1W_0.1T_0006.pt
-    brainid_feat/T1W/0.1T/P_T1W_0.1T_0006.b2nd
-  Validating_prospective/
-    latent/{modality}/{field}/{NIfTI_stem}.pt
-    brainid_feat/{modality}/{field}/{NIfTI_stem}.b2nd
+<cache_root>/<split>/latent/<modality>/<field>/<stem>.pt
+<cache_root>/<split>/brainid_feat/<modality>/<field>/<stem>.b2nd
 ```
 
-The `.pt` contains the `latent` tensor; the `.b2nd` contains compressed float16
-features and shape metadata. Check the writer summaries and ensure every input
-stem has **both** output files before training. Brain-ID reports per-volume
-errors in its summaries; a completed command with nonzero `errors` does not
-mean a complete cache. The writers skip existing outputs. Use
-`--modality T1W` to generate a single modality when diagnosing extraction.
-The Brain-ID writer also supports `--fields`, `--max_volumes` and `--overwrite`;
-use `--help` for these controls. Generate the full caches for the actual run.
+Check writer summaries, including Brain-ID's `errors` count. Existing outputs
+are skipped; changing feature geometry requires regeneration. Use `--help` for
+single-modality extraction, field subsets and overwrite controls.
 
 ### 4. Train and connect the stage artifacts
 
-Run these stages in order after completing the caches and YAML paths:
+After caching, run these stages in order:
 
 ```bash
 python scripts/train.py --config configs/pretrain.yaml
@@ -242,68 +127,23 @@ python scripts/finetune_vae.py --config configs/vae_finetune.yaml
 python scripts/finetune.py --config configs/finetune.yaml
 ```
 
-| Stage | Selected artifact / behavior |
+| Stage | Artifact selection / downstream setting |
 |---|---|
-| Unpaired RF pretraining | Runs for 100 epochs; subsequent stages use `runs/pretrain/fieldrf_epoch90.pt` |
-| Unpaired endpoint alignment | Produces `runs/endpoint_alignment/fieldrf_unpaired_alignment_best.pt`, tied to that epoch-90 base |
-| Decoder adaptation | Runs for 5 epochs; the supplied paired/inference recipe selects `runs/vae_finetune/vae_finetune_epoch1.pt` |
-| Paired RF adaptation | Runs for 20 epochs; `runs/paired_finetune/fieldrf_paired_latest.pt` is the latest full checkpoint, with RF EMA; `fieldrf_paired_best_task3.pt` is a separate validation-selected artifact |
+| RF pretraining (100 epochs) | Set `finetune_from: runs/pretrain/fieldrf_epoch90.pt` in both alignment and paired configs |
+| Endpoint alignment (20 epochs) | Set paired `endpoint_aligner_checkpoint: runs/endpoint_alignment/fieldrf_unpaired_alignment_best.pt` |
+| VAE decoder adaptation (5 epochs) | Set paired `vae.checkpoint: runs/vae_finetune/vae_finetune_epoch1.pt`; use this decoder for inference |
+| Paired RF adaptation (20 epochs) | `runs/paired_finetune/fieldrf_paired_latest.pt`, containing joint RF/aligner EMA |
 
-The VAE adaptation freezes its encoder and updates only the decoder. Original
-latent caches remain valid, so no latent regeneration is needed afterward.
-Paired adaptation uses only real same-subject, same-modality
-`Training_prospective` pairs. The VAE is frozen during paired adaptation;
-Brain-ID is already represented by its frozen caches. RF, ControlNet and the
-endpoint aligner share parameters across fields and modalities.
-
-An epoch-20 checkpoint and the best validation checkpoint are different
-selection rules. After the configured 20-epoch run, `fieldrf_paired_latest.pt`
-contains the epoch-20 RF EMA. Use the epoch-1 adapted VAE consistently for
-paired adaptation and inference; the original MAISI decoder changes the
-protocol. These commands describe the released recipe; the short pipeline check
-below does not establish full-training benchmark results.
-
-### 5. Check the pipeline on a small real-data subset
-
-Before a full run, make local copies of the four YAML files under `tmp/` and use
-separate data, cache and output directories. Keep the full architecture and
-official pretrained weights. Use one real volume per modality and field in each
-of the three splits (45 inputs total), with the same prospective subject ID
-across all fields for paired training. Set `data.subjects` in the paired config
-to that subject; preserve the other split roles described above.
-
-Generate both caches as in step 3, using the smoke pretraining config. Set
-`finetune_from` in both downstream RF configs to the smoke run's
-`fieldrf_epoch1.pt`, set the aligner path to the smoke alignment artifact, and
-set the paired VAE path to the smoke decoder's `vae_finetune_epoch1.pt`.
-Use small worker counts, set pretraining `vis.vis_every` above 1 to skip its
-optional image rendering, and set VAE validation `vis.n_samples: 1`. From the
-method directory, run the public entry points:
-
-```bash
-python scripts/train.py --config ../tmp/smoke/pretrain.yaml \
-  --n_epochs 1 --max_volumes 1
-python scripts/train_endpoint_aligner.py \
-  --config ../tmp/smoke/endpoint_alignment.yaml --n_epochs 1 --max_volumes 1
-python scripts/finetune_vae.py --config ../tmp/smoke/vae_finetune.yaml \
-  --epochs 1 --max_volumes 1
-python scripts/finetune.py --config ../tmp/smoke/finetune.yaml \
-  --n_epochs 1 --skip_vis
-```
-
-Use the inference command below with these smoke artifacts and `--epoch_tag
-epoch1`. Add `--target_fields 0.1T 7T` for 24 non-identity outputs covering all
-five source fields and all three modalities. Also test the optional
-`--source_endpoint_transport` branch separately. Verify that every cache is
-present and finite, the checkpoints contain optimizer state, and the decoded
-NIfTI files are finite, nonempty and preserve the source shape and affine.
-Check that the adapted VAE encoder is unchanged and its decoder has updated.
-Keep smoke artifacts separate from the full experiment.
+The aligner's recorded RF base must match paired `finetune_from`, including
+when relocating checkpoints. VAE adaptation freezes the encoder, so existing
+latent caches remain valid. Paired adaptation uses same-subject, same-modality
+prospective training pairs, with the VAE frozen. RF, ControlNet and the aligner
+share parameters across fields and modalities.
 
 ## Inference
 
-For shared Any-to-Any transport using the jointly adapted epoch-20 RF and
-endpoint-aligner EMA:
+Use the paired checkpoint for **both** RF and endpoint-aligner EMA, together
+with the adapted epoch-1 decoder:
 
 ```bash
 python scripts/inference.py \
@@ -317,88 +157,61 @@ python scripts/inference.py \
   --output_dir /path/to/predictions
 ```
 
-The full paired checkpoint stores the RF and endpoint-aligner EMA together.
-Both are selected automatically when present. To evaluate source endpoint
-transport without the learned aligner, omit `--endpoint_checkpoint` and add
-`--source_endpoint_transport`; keep the explicit inversion steps and solver.
-This is a different inference choice, so record it when comparing experiments.
-For validation-selected inference, use `fieldrf_paired_best_task3.pt` as both
-checkpoint arguments and set `--epoch_tag` to its actual selected epoch.
-That artifact already stores the jointly selected EMA weights. A separate
-unpaired aligner checkpoint contains its earlier weights and changes the
-protocol.
+Task 3 uses one model for all non-identity field pairs. Both caches and the raw
+source/reference grid are required; Brain-ID source/weights are no longer
+needed. TTA defaults to none. See the [CLI guide](mrix2026-cli/README.md) for
+output packaging and `--help` for source/target subsets.
 
-Task 3 translates all five source fields into each of the other four fields
-with one shared model. Inference requires both caches for the chosen split, the
-raw MRI/reference grid and the adapted VAE decoder. It does not require the
-Brain-ID checkout or Brain-ID checkpoint once the caches exist. No test-time
-augmentation is used by default. Outputs follow the sweep layout consumed by
-[the packaging tools](mrix2026-cli/README.md). Use `--help` for target subsets
-and other output options.
+`fieldrf_paired_latest.pt` after epoch 20 and the validation-selected
+`fieldrf_paired_best_task3.pt` use different selection rules. To use the latter,
+pass it as both checkpoint arguments and set its actual epoch tag. To test
+transport without the aligner, omit `--endpoint_checkpoint` and add
+`--source_endpoint_transport`. Keep the decoder and inversion settings consistent.
 
-Existing checkpoints can retain their original filenames: the loader accepts
-explicit paths, and parameter layouts and state-dict keys are preserved.
+## Verification
 
-## Tests and experiment reproduction
-
-The [committed CPU test suite](FieldRF/tests/) contains 34 tests across six
-files. Install its dependencies and run it from the repository root:
+Run the CPU suite from the repository root:
 
 ```bash
-python -m pip install -r requirements.txt
 python -m pytest -q FieldRF/tests mrix2026-cli/tests
 ```
 
-Two additional CLI tests check submission ZIP layout. The tests cover data
-pairing, RF/spatial losses, sampling/autograd, cache generation and a real MONAI
-network's training/checkpoint round trip with synthetic fixtures. See the
-[test inventory](FieldRF/README.md#cpu-regression-tests). Full experiment
-reproduction follows the [pipeline above](#reproduction-pipeline), using its
-external data, weights and both caches. See
-[reference evaluation](Evaluation/README.md) for metric definitions.
+**36 tests with 4 subtests passed.** A separate real-data check on one A100 80GB
+used the full network: 45 latent and 45 Brain-ID caches, short runs of all four
+training stages, a complete 60-pair fine-tuning epoch, and 25 inference outputs.
+Caches/weights were finite, the VAE encoder was unchanged and its decoder
+updated, and outputs preserved source shape/affine.
 
-### Verified real-data GPU pipeline
+For a small check, use separate data/cache/output paths, one matched prospective
+subject and one volume per split/modality/field. Run each stage for one epoch
+(`--n_epochs 1`; VAE uses `--epochs 1`), change both RF bases to `fieldrf_epoch1.pt`
+and use the resulting aligner/decoder paths. See the
+[smoke instructions and test record](REPRODUCIBILITY.md#run-an-isolated-small-data-check)
+for details. Full-duration benchmark metrics and NPU/DDP were not verified.
 
-On 2026-10-06, a fresh recursive remote clone passed the complete short pipeline
-on one A100 80GB, using official pretrained weights and **45 real MRI volumes**
-covering all three splits, three modalities and five fields. The full network
-and native cache geometry were used; only the dataset size, training duration
-and diagnostic frequency were reduced.
-
-| Stage | Verified work |
-|---|---|
-| MAISI latent cache | 45 new `(4,96,96,96)` caches |
-| Brain-ID feature cache | 45 new native `(64,192,192,192)` `feat4` caches |
-| RF pretraining | 1 epoch, 15 optimization steps |
-| Endpoint alignment | 1 epoch, 12 optimization steps; one paired training-split diagnostic |
-| VAE decoder adaptation | 15 minibatches, 2 accumulated optimizer steps; 15 validation volumes |
-| Paired RF adaptation | 1 complete subject, 60 ordered cross-field pairs; 15 terminal-rollout updates |
-| Joint RF/aligner EMA inference | 24 outputs: all source fields/modalities into `0.1T` and `7T`, excluding identity |
-| Source transport without aligner | One additional T1W `0.1T` to `7T` output |
-
-All 90 caches and checkpoint weights were finite. Optimizer state was populated;
-the adapted VAE encoder remained bitwise unchanged and its decoder changed.
-All 25 decoded NIfTI outputs were finite, nonempty, normalized to `[0,1]`, and
-preserved their source shape and affine. Inversion and generation each used
-20 Euler steps. The CPU regression run passed **36 tests with 4 subtests**.
-
-This verifies the real-data execution path and artifact consistency. Full
-training duration, all five target-field sweeps, benchmark metrics and NPU/DDP
-remain outside this check. See [the validation record](REPRODUCIBILITY.md) for
-source revisions, environment details and initialization compatibility.
-
-## Acknowledgements and citations
-
-The benchmark, baseline and evaluation framework originates from
-[MRIxFields/MRIxFields2026](https://github.com/MRIxFields/MRIxFields2026).
-FieldRF uses [MONAI](https://github.com/Project-MONAI/MONAI),
-[Brain-ID](https://github.com/jhuldr/Brain-ID) and
-[MAISI / MAISI-v2](https://github.com/NVIDIA-Medtech/NV-Generate-CTMR).
-Please cite the corresponding original works listed in [REFERENCES.md](REFERENCES.md).
-
-The [reproducibility check](REPRODUCIBILITY.md) records the tested environment,
-verification scope and external artifacts needed for full experiments.
+For comparison methods, configure `.env` from `.env.example` and follow the
+[baseline guide](Baseline/README.md).
 
 ## License
 
 See [LICENSE](LICENSE).
+
+## Citation
+
+If you use FieldRF, please cite the paper:
+
+```bibtex
+@misc{song2026fieldrf,
+  title = {FieldRF: Anatomy-Conditioned 3D Rectified Flow for Unified Cross-Field MRI Harmonization},
+  author = {Song, Haiyu and Xiang, Lei and Yang, Zongjian and Wu, Yang and Shen, Dinggang and Wang, Qian},
+  year = {2026},
+  url = {https://papers.miccai.org/miccai-2026-sat/paper/MRIxFields2026_026.pdf}
+}
+```
+
+The benchmark and evaluation framework come from
+[MRIxFields/MRIxFields2026](https://github.com/MRIxFields/MRIxFields2026).
+FieldRF builds on [MONAI](https://github.com/Project-MONAI/MONAI),
+[Brain-ID](https://github.com/jhuldr/Brain-ID) and
+[MAISI / MAISI-v2](https://github.com/NVIDIA-Medtech/NV-Generate-CTMR).
+Please also cite the corresponding original works in [REFERENCES.md](REFERENCES.md).
