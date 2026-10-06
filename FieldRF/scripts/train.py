@@ -296,6 +296,7 @@ def main():
 
     bridge_raw = bridge.module if args.dist else bridge
     cfg["bridge"]["resblock_updown"] = bridge_raw.resblock_updown
+    cfg["bridge"]["include_fc"] = bridge_raw.include_fc
 
     # ── EMA ── #
     ema = None
@@ -338,7 +339,7 @@ def main():
 
     if is_main:
         print(f"Data: {len(train_ds)} samples | modalities={modalities} | fields={fields}")
-        print(f"Feats: 5 levels (feat[0-4]) from {feat_cache_name}")
+        print(f"Brain-ID conditioning: cached feat4 from {feat_cache_name}")
         print(f"Source latent injection: {bridge_raw.source_injection}")
         if spatial_loss_enabled:
             print(
@@ -840,6 +841,7 @@ def main():
                     "num_train_timesteps": num_train_timesteps,
                     "bridge_config": {
                         "resblock_updown": bridge_raw.resblock_updown,
+                        "include_fc": bridge_raw.include_fc,
                         "unet_channels": tuple(bridge_cfg.get("unet_channels", [64, 128, 256, 512])),
                         "num_res_blocks": tuple(bridge_cfg.get("num_res_blocks", [2, 2, 2, 2])),
                         "attention_levels": tuple(bridge_cfg.get("attention_levels", [False, False, True, True])),

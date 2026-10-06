@@ -19,6 +19,12 @@ def infer_resblock_updown(state_dict, prefix=""):
     )
 
 
+def infer_include_fc(state_dict, prefix=""):
+    """Detect the learned output projection used by pretrained attention."""
+    return any(key.startswith(prefix) and ".attn.out_proj.weight" in key
+               for key in state_dict)
+
+
 def load_pretrained(
     model_class,
     ckpt_path,
@@ -41,6 +47,7 @@ def load_pretrained(
     device="cpu",
     load_ema=False,
     resblock_updown=None,
+    include_fc=None,
     **kwargs,
 ):
     """Load pretrained UNet (4ch conv_in intact), attach fresh ControlNet.
@@ -52,6 +59,7 @@ def load_pretrained(
     sd = torch.load(ckpt_path, map_location="cpu", weights_only=False)
     if "bridge" in sd:
         inferred_resampling = infer_resblock_updown(sd["bridge"], "unet.")
+        inferred_fc = infer_include_fc(sd["bridge"], "unet.")
     else:
         if "state_dict" in sd:
             sd = sd["state_dict"]
@@ -60,6 +68,7 @@ def load_pretrained(
         sd = {key[7:] if key.startswith("module.") else key: value
               for key, value in sd.items()}
         inferred_resampling = infer_resblock_updown(sd)
+        inferred_fc = infer_include_fc(sd)
     if resblock_updown is None:
         resblock_updown = inferred_resampling
     elif bool(resblock_updown) != inferred_resampling:
@@ -67,6 +76,13 @@ def load_pretrained(
             "[RF] UNet resampling architecture differs from checkpoint: "
             f"requested resblock_updown={resblock_updown}, "
             f"checkpoint requires {inferred_resampling}"
+        )
+    if include_fc is None:
+        include_fc = inferred_fc
+    elif bool(include_fc) != inferred_fc:
+        raise RuntimeError(
+            "[RF] UNet attention projection differs from checkpoint: "
+            f"requested include_fc={include_fc}, checkpoint requires {inferred_fc}"
         )
     bridge = model_class(
         unet_channels=unet_channels,
@@ -86,6 +102,7 @@ def load_pretrained(
         source_adapter_channels=source_adapter_channels,
         use_flash_attention=use_flash_attention,
         resblock_updown=resblock_updown,
+        include_fc=include_fc,
     )
 
     # Handle Stage 1/2 training checkpoint format (full bridge state dict)
@@ -140,6 +157,7 @@ def load_pretrained(
     bridge = bridge.to(device)
     print(f"[RF] Bridge ready: in_channels={bridge.in_channels}, "
           f"resblock_updown={bridge.resblock_updown}, "
+          f"include_fc={bridge.include_fc}, "
           f"num_train_timesteps={num_train_timesteps}, "
           f"controlnet=on (feat4 {feat4_channels}ch, "
           f"conditioning_embedding="

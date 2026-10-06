@@ -59,7 +59,8 @@ def _load_feats_b2nd(path):
 class MultiFieldCacheDataset(torch.utils.data.Dataset):
     """Multi-modal, multi-field cache dataset for RF.
 
-    Loads latent (4, 96^3) + ALL 5 Brain-ID features (multi-scale) for all
+    Loads latent (4, 96^3) and cached Brain-ID features (feat4 in the supplied
+    recipe; multiple levels are supported by the container) for all
     (modality, field) combinations.  Returns joint modality × field class label
     (15-class scheme: 3 mods × 5 fields).
 

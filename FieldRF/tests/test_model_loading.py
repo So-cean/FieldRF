@@ -123,6 +123,23 @@ class ModelLoadingTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "resampling architecture differs"):
             self.load({"bridge": self.model.state_dict()}, resblock_updown=True)
 
+    def test_pretrained_attention_projection_is_restored(self):
+        options = MODEL_OPTIONS | {"attention_levels": (False, False, True, True)}
+        pretrained = FieldRFModel(**options, include_fc=True, resblock_updown=True)
+        loaded = self.load(
+            {"unet_state_dict": pretrained.unet.state_dict()},
+            attention_levels=options["attention_levels"],
+        )
+        self.assertTrue(loaded.include_fc)
+        self.assertTrue(loaded.resblock_updown)
+        for name, value in pretrained.unet.state_dict().items():
+            if name != "class_embedding.weight":
+                torch.testing.assert_close(loaded.unet.state_dict()[name], value, rtol=0, atol=0)
+        continued = self.load({"bridge": loaded.state_dict()}, attention_levels=options["attention_levels"])
+        self.assertTrue(continued.include_fc)
+        for name, value in loaded.state_dict().items():
+            torch.testing.assert_close(continued.state_dict()[name], value, rtol=0, atol=0)
+
 
 if __name__ == "__main__":
     unittest.main()

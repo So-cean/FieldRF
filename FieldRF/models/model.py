@@ -51,6 +51,7 @@ class FieldRFModel(nn.Module):
         source_adapter_channels=16,
         use_flash_attention=True,
         resblock_updown=False,
+        include_fc=False,
     ):
         super().__init__()
         self.z_channels = z_channels
@@ -60,6 +61,7 @@ class FieldRFModel(nn.Module):
         # MAISI RF weights use residual resampling; legacy FieldRF weights
         # used convolutional resampling. Checkpoint loaders infer this flag.
         self.resblock_updown = bool(resblock_updown)
+        self.include_fc = bool(include_fc)
         self.conditioning_embedding_num_channels = tuple(
             int(value) for value in conditioning_embedding_num_channels
         )
@@ -94,6 +96,7 @@ class FieldRFModel(nn.Module):
             include_spacing_input=True,
             use_flash_attention=use_flash_attention,
             resblock_updown=self.resblock_updown,
+            include_fc=self.include_fc,
         )
         self.source_adapter = None
         if self.source_injection == "adapter":
@@ -162,7 +165,7 @@ class FieldRFModel(nn.Module):
             z_t: (B, 4, 96³) noisy latent (scaled by scale_factor).
             t: (B,) float timesteps [0, num_train_timesteps).
             class_label: (B,) target class (0-14).
-            feats: list of 5 Brain-ID features [feat0..feat4].
+            feats: list ending in Brain-ID feat4; may contain only feat4.
             z_src: optional scaled source latent for concat/adapter injection.
 
         Returns:

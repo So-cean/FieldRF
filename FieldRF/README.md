@@ -82,7 +82,7 @@ augmentation is used by default.
 
 ## CPU regression tests
 
-The committed suite contains 31 tests in six files:
+The committed suite contains 32 tests in six files:
 
 | File | Tests | Coverage |
 |---|---:|---|
@@ -90,7 +90,7 @@ The committed suite contains 31 tests in six files:
 | [test_alignment.py](tests/test_alignment.py) | 8 | Unpaired reference sampling, endpoint losses, RF paths and truncated inversion |
 | [test_paired_dataset.py](tests/test_paired_dataset.py) | 3 | Same-subject/modality pairing, domain completeness and cross-field record counts |
 | [test_spatial_loss.py](tests/test_spatial_loss.py) | 3 | Fractional evaluation-slab weights and weighted L1 supervision |
-| [test_model_loading.py](tests/test_model_loading.py) | 10 | Full/EMA and raw UNet loading, source adaptation and invalid checkpoints |
+| [test_model_loading.py](tests/test_model_loading.py) | 11 | Full/EMA and raw UNet loading, source adaptation and invalid checkpoints |
 | [test_sampling.py](tests/test_sampling.py) | 4 | Euler/Heun direction, latent scaling, gradient propagation and deterministic endpoint reversal |
 
 From the repository root:
