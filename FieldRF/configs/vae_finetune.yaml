@@ -1,0 +1,76 @@
+# VAE Decoder Finetune Config — frozen encoder, decoder-only training
+#
+# Purpose: improve VAE decode quality for T2W/T2FLAIR (SSIM 0.933/0.945 → 0.97+).
+# Encoder verified OK (latent stats identical across modalities, see analysis/verify_vae_encoder.py).
+# Only decoder is trained. Cached latents remain valid (encoder unchanged, no re-cache needed).
+
+data:
+  data_root: /path/to/MRIxFields2026
+  split: Training_retrospective
+  modalities: [T1W, T2W, T2FLAIR]
+  fields: [0.1T, 1.5T, 3T, 5T, 7T]
+  cache_root: /path/to/fieldrf_cache
+
+vae:
+  type: maisi
+  latent_channels: 4
+  checkpoint: /path/to/pretrained/autoencoder_v1.pt
+  # NOTE: scale_factor is NOT used by VAE finetune (operates in image space, not latent space).
+  # It's kept here for reference (used by bridge training to scale latents).
+  scale_factor: 1.0055984258651733
+  spatial_dims: 3
+  in_channels: 1
+  out_channels: 1
+  num_channels: [64, 128, 256]
+  num_res_blocks: [2, 2, 2]
+  norm_num_groups: 32
+  norm_eps: 1.0e-6
+  attention_levels: [false, false, false]
+  with_encoder_nonlocal_attn: false
+  with_decoder_nonlocal_attn: false
+  use_checkpointing: false
+  use_convtranspose: false
+  norm_float16: false               # decoder-only finetune uses float32; fp16 conv+bias mismatch
+  num_splits: 4
+  dim_split: 1
+  sliding_window:
+    roi_size: [384, 384, 64]
+    overlap: 0.5
+    mode: gaussian
+    sw_batch_size: 1
+    amp_dtype: float16
+
+train:
+  freeze_encoder: true          # freeze encoder, only train decoder
+  epochs: 5
+  lr: 0.00001                  # 1e-5: gentle finetune
+  min_lr: 1.0e-7
+  warmup_steps: 50               # linear ramp from 0 to 1 over 50 optimizer steps
+  save_every: 1                 # VAE decoder checkpoint is small (~50MB)
+  patch_size: 128                # image patch size (latent = patch//4 = 32)
+  batch_size: 1                  # A100-40G memory limit
+  accum_steps: 8                 # effective batch = 8
+  num_workers: 4
+  # Loss weights
+  ssim_weight: 0.5               # SSIM loss (was 0.0 in old run — main fix)
+  perceptual_weight: 0.3         # SqueezeNet perceptual
+  adv_weight: 0.0                # no adversarial for decoder-only
+  kl_weight: 0.0                 # no KL (encoder frozen)
+  # ── EMA loss balancing (GradNorm-style) ──
+  # Problem: T2W loss 2-3× T1W 5T → T1W 5T gradient drowned out → T1W 5T SSIM
+  # REGRESSES during finetune (0.966→0.954 at ep16). This auto-scales per-sample
+  # gradients so all (modality,field) classes contribute equal gradient magnitude.
+  loss_balance:
+    enabled: true
+    decay: 0.80                 # faster EMA (half-life ~3 appearances, converges in ~10); 0.95 was too slow, EMA not stable until ep2+
+    warmup_steps: 300           # longer warmup so EMA stabilizes before balancing; 100 was too short
+    clip_min: 0.2               # weight floor (prevent over-boosting easy classes)
+    clip_max: 5.0               # weight ceiling (prevent over-suppressing hard classes)
+
+vis:
+  split: Validating_prospective  # validation split
+  n_samples: 3                   # evaluate all 3 subjects per (modality, field)
+  vis_every: 1                   # MUST be 1: per-epoch PNG+CSV required
+  eval_slice_range: [150, 180]   # 30-slice eval window (same as V4 vis)
+
+output_dir: runs/vae_finetune

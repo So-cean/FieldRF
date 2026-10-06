@@ -1,0 +1,124 @@
+task: 1
+task_name: task1_5T_to_7T_T1W
+method: ittr
+model:
+  input_nc: 1
+  output_nc: 1
+  ngf: 64
+  ndf: 64
+  n_blocks: 9
+  nce_layers:
+  - 0
+  - 1
+  - 2
+  - 3
+  - 7
+  nce_T: 0.07
+  num_patches: 768
+  lambda_LNCC: 0.0
+  lambda_GAN: 1.0
+  lambda_NCE: 1.0
+  nce_idt: true
+  gan_mode: lsgan
+  multiscale: true
+  num_D: 2
+  n_layers_D: 3
+  use_spectral_norm: false
+  netF_nc: 256
+  dim_head: 32
+  heads: 8
+  attn_height_top_k: 16
+  attn_width_top_k: 16
+  attn_dropout: 0.0
+  ff_dropout: 0.0
+  ff_mult: 4
+  use_tanh: true
+  use_conv_transpose: true
+data:
+  source_field: 5T
+  target_field: 7T
+  modalities:
+  - T1W
+  crop_size: null
+  slice_axis: 2
+  normalize: false
+  use_monai: true
+  slice_range: [120, 210]
+  cache_dir: /path/to/baseline_cache
+  augment:
+    rotate: 0.1
+    scale: [0.9, 1.1]
+    translate: 5
+    flip_lr: true
+inference:
+  batch_size: 32
+pretrain:
+  split: retro_train
+  batch_size: 4
+  num_workers: 8
+  lr: 0.0002
+  beta1: 0.5
+  beta2: 0.999
+  lr_policy: linear
+  n_epochs: 50
+  n_epochs_decay: 50
+  save_every: 10
+  val_every: 1
+  display_freq: 100
+  print_every: 1000
+  mixed_precision: bf16
+  max_grad_norm: 1.0
+  early_stop_patience: 20
+  early_stop_min_epochs: 10
+  nce_layer_weights:
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  nce_T: 0.07
+  num_patches: 768
+  lambda_LNCC: 0.0
+  lr_D: 2e-5
+  lambda_GAN: 1.0
+  lambda_NCE: 5.0
+  nce_idt: true
+  gan_mode: lsgan
+  multiscale: true
+  num_D: 2
+  n_layers_D: 3
+  use_spectral_norm: false
+  foreground_sampling: true
+  moco: true
+  moco_queue_size: 4096
+  moco_momentum: 0.99
+  ema: true
+  ema_decay: 0.999
+  nce_T_start: 0.07
+finetune:
+  split: pro_train
+  batch_size: 4
+  num_workers: 8
+  lr: 5.0e-06
+  beta1: 0.5
+  beta2: 0.999
+  epochs: 50
+  save_every: 10
+  val_every: 5
+  display_freq: 100
+  warmup_epochs: 5
+  loss_l1: 1.0
+  loss_lpips: 0.5
+  loss_ssim: 0.1
+  loss_edge: 0.0
+  mixed_precision: "no"
+  max_grad_norm: 1.0
+evaluation:
+  slice_range: [150, 180]
+  metrics:
+  - nrmse
+  - ssim
+  - lpips
+  - psnr
+  - fid
+  - kid

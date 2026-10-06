@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mrix2026-cli"
+version = "0.2.0"
+description = "CLI tools for MRIxFields2026 — build and upload Synapse submission packages"
+requires-python = ">=3.10"
+dependencies = ["numpy", "nibabel"]
+
+[project.scripts]
+mrix2026 = "mrix2026_cli.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["mrix2026_cli*"]

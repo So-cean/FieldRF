@@ -1,0 +1,75 @@
+task: 1
+task_name: task1_0.1T_to_7T_T1W
+method: unsb
+model:
+  input_nc: 1
+  output_nc: 1
+  ndf: 64
+  ngf: 64
+  n_blocks: 9
+  n_mlp: 3
+  z_dim: 256
+  t_emb_dim: 256
+  num_timesteps: 5
+  tau: 0.01
+  std: 0.1
+  lambda_GAN: 1.0
+  lambda_NCE: 1.0
+  lambda_SB: 0.1
+  nce_layers:
+  - 0
+  - 4
+  - 8
+  - 12
+  - 16
+  nce_T: 0.07
+  nce_idt: true
+  gan_mode: lsgan
+  patch_mode: patchnce
+  num_patches: 256
+data:
+  source_field: 0.1T
+  target_field: 7T
+  modalities:
+  - T1W
+  crop_size: null
+  slice_axis: 2
+inference:
+  batch_size: 1
+  num_steps: null
+pretrain:
+  split: retro_train
+  batch_size: 8
+  num_workers: 4
+  lr: 0.0002
+  beta1: 0.5
+  beta2: 0.999
+  lr_policy: linear
+  n_epochs: 200
+  n_epochs_decay: 200
+  save_every: 10
+  display_freq: 100
+  print_every: 1000
+  mixed_precision: "bf16"
+  max_grad_norm: 1.0
+finetune:
+  split: pro_train
+  batch_size: 1
+  num_workers: 4
+  lr: 5.0e-05
+  beta1: 0.5
+  beta2: 0.999
+  epochs: 50
+  save_every: 10
+  loss_l1: 1.0
+  loss_lpips: 0.1
+  loss_ssim: 0.0
+  loss_edge: 0.0
+  mixed_precision: "no"
+  max_grad_norm: 1.0
+evaluation:
+  slice_range: [150, 180]
+  metrics:
+  - nrmse
+  - ssim
+  - lpips

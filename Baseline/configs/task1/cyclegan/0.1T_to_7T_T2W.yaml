@@ -1,0 +1,77 @@
+task: 1
+task_name: task1_0.1T_to_7T_T2W
+method: cyclegan
+model:
+  input_nc: 1
+  output_nc: 1
+  ngf: 64
+  ndf: 64
+  n_blocks: 9
+  pool_size: 50
+  lambda_cycle: 10.0
+  lambda_idt: 0.5
+  use_spectral_norm: false
+data:
+  source_field: 0.1T
+  target_field: 7T
+  modalities:
+  - T2W
+  crop_size: null
+  slice_axis: 2
+  use_monai: true
+  slice_range: [120, 210]
+  normalize: false
+  norm_nonzero: false
+  cache_dir: /path/to/baseline_cache
+  auto_slice_range: false
+  augment:
+    rotate: 0.1
+    scale: [0.9, 1.1]
+    translate: 5
+    flip_lr: true
+pretrain:
+  split: retro_train
+  batch_size: 8
+  num_workers: 4
+  lr: 0.0002
+  lr_D: 5.0e-05
+  beta1: 0.5
+  lr_policy: linear
+  n_epochs: 50
+  n_epochs_decay: 50
+  save_every: 10
+  print_every: 1000
+  display_freq: 100
+  max_iters_per_epoch: 0
+  gan_mode: lsgan
+  real_label: 0.9
+  fake_label: 0.1
+  mixed_precision: "no"
+  max_grad_norm: 1.0
+  val_every: 1
+  early_stop_patience: 10
+  early_stop_min_epochs: 50
+finetune:
+  split: pro_train
+  batch_size: 8
+  num_workers: 4
+  lr: 5.0e-05
+  beta1: 0.5
+  beta2: 0.999
+  epochs: 50
+  save_every: 10
+  display_freq: 100
+  max_iters_per_epoch: 0
+  loss_l1: 1.0
+  loss_lpips: 0.1
+  loss_ssim: 0.0
+  loss_edge: 0.0
+  mixed_precision: "no"
+  max_grad_norm: 1.0
+evaluation:
+  slice_range: [150, 180]
+  metrics:
+  - nrmse
+  - ssim
+  - lpips
+  - psnr

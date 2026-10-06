@@ -1,0 +1,107 @@
+task: 1
+task_name: task1_0.1T_to_7T_T1W
+method: cut3d
+model:
+  input_nc: 1
+  output_nc: 1
+  ngf: 32
+  ndf: 32
+  n_blocks: 9
+  nce_layers:
+  - 0
+  - 4
+  - 8
+  - 12
+  - 16
+  skip_dropout: 0.0
+  netF_nc: 256
+  multiscale: false
+  num_D: 1
+  n_layers_D: 3
+  use_spectral_norm: false
+data:
+  source_field: 0.1T
+  target_field: 7T
+  modalities:
+  - T1W
+  patch_size:
+  - 128
+  - 128
+  - 128
+  samples_per_volume: 1
+  slice_axis: 2
+  normalize: false
+  seg_dir: segmentation
+  cache_dir: /path/to/baseline_cache
+inference:
+  batch_size: 4
+  cache_rate: 1.0
+  cache_num_workers: 8
+pretrain:
+  split: retro_train
+  batch_size: 4
+  num_workers: 8
+  lr: 0.0002
+  beta1: 0.5
+  beta2: 0.999
+  lr_policy: linear
+  n_epochs: 50
+  n_epochs_decay: 50
+  save_every: 10
+  val_every: 1
+  display_freq: 100
+  print_every: 1000
+  mixed_precision: bf16
+  max_grad_norm: 1.0
+  early_stop_patience: 10
+  early_stop_min_epochs: 60
+  nce_layer_weights:
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  - 1.0
+  nce_T: 0.07
+  num_patches: 2048
+  lambda_GAN: 1.0
+  lambda_NCE: 1.0
+  nce_idt: false
+  gan_mode: lsgan
+  foreground_sampling: false
+  moco: false
+  moco_queue_size: 4096
+  moco_momentum: 0.99
+  ema: false
+  ema_decay: 0.999
+  nce_T_start: 0.07
+  lr_D: 0.0002
+  lambda_LNCC: 0.0
+evaluation:
+  slice_range: [150, 180]
+  metrics:
+  - nrmse
+  - ssim
+  - lpips
+  - psnr
+
+
+finetune:
+  split: pro_train
+  batch_size: 1
+  num_workers: 2
+  lr: 1.0e-05
+  beta1: 0.5
+  beta2: 0.999
+  epochs: 50
+  save_every: 10
+  val_every: 5
+  display_freq: 10
+  warmup_epochs: 5
+  loss_l1: 1.0
+  loss_lpips: 0.0
+  loss_ssim: 0.0
+  loss_edge: 0.0
+  mixed_precision: bf16
+  max_grad_norm: 1.0
+  early_stop_patience: 15
+  early_stop_min_epochs: 10

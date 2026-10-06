@@ -1,0 +1,8 @@
+numpy
+nibabel
+scipy
+scikit-image
+pandas
+xlsxwriter
+torch
+lpips
