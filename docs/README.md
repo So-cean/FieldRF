@@ -6,7 +6,8 @@ Use Python 3.10 or later. Configure PyTorch and torchvision for your hardware
 first, then install the Python dependencies from the repository root:
 
 ```bash
-python -m pip install -r requirements.txt
+python -m pip install --upgrade 'pip>=25.3'
+python -m pip install -r requirements.txt --build-constraint build-constraints.txt
 python -m pip install --no-deps -e FieldRF/ -e Baseline/
 ```
 
@@ -15,6 +16,10 @@ utilities. It specifies no PyTorch/torchvision version, CUDA runtime version or
 CUDA wheel index. A compatible PyTorch installation can be reused. MONAI must
 provide the MAISI autoencoder/UNet and ControlNet components; blosc2 must provide
 its native NDArray containers, `asarray`, `open` and metadata support.
+
+`build-constraints.txt` limits setuptools only in isolated source builds because
+Brain-ID's `visdom` dependency still imports `pkg_resources` in its build script.
+The build constraint does not select the runtime setuptools or PyTorch version.
 
 The FieldRF package also declares its direct dependencies in
 [`FieldRF/pyproject.toml`](../FieldRF/pyproject.toml). Baseline dependencies are
@@ -43,7 +48,8 @@ NPU installations use their platform-specific PyTorch adapter separately.
 Install the test dependencies and run the committed test suite:
 
 ```bash
-python -m pip install -r requirements.txt
+python -m pip install --upgrade 'pip>=25.3'
+python -m pip install -r requirements.txt --build-constraint build-constraints.txt
 python -m pip install --no-deps -e FieldRF/
 python -m pytest -q FieldRF/tests
 ```

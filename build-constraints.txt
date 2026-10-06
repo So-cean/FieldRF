@@ -1,0 +1,3 @@
+# Brain-ID's visdom dependency imports pkg_resources while building its sdist.
+# This constraint applies only to isolated builds, not the runtime environment.
+setuptools<81

@@ -23,7 +23,8 @@ git clone --recurse-submodules https://github.com/So-cean/FieldRF.git
 cd FieldRF
 # Also run this for an existing clone:
 git submodule update --init --recursive
-python -m pip install -r requirements.txt
+python -m pip install --upgrade 'pip>=25.3'
+python -m pip install -r requirements.txt --build-constraint build-constraints.txt
 python -m pip install --no-deps -e FieldRF/
 ```
 
@@ -32,7 +33,8 @@ Brain-ID source is pinned at
 in `third_party/Brain-ID` and located automatically (`BRAINID_ROOT` overrides it).
 Use this repository's requirements for feature extraction; upstream Brain-ID
 requirements pin its older training stack. See [setup](docs/README.md) for
-package and CLI installation.
+package and CLI installation. `build-constraints.txt` keeps the legacy `visdom`
+source build compatible without pinning runtime PyTorch/CUDA.
 
 Obtain the [MRIxFields2026 data](https://github.com/MRIxFields/MRIxFields2026)
 and download these weights separately:
