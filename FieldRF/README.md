@@ -10,7 +10,7 @@ ControlNet, unpaired pretraining and paired cross-field adaptation.
 |---|---|
 | `data/dataset.py` | Cached unpaired volumes, paired field adaptation and visualization pairs |
 | `data/volume_dataset.py` | Raw NIfTI volumes and preprocessing for cache generation |
-| `data/alignment_dataset.py` | Unpaired and synthetic endpoint-alignment datasets |
+| `data/alignment_dataset.py` | Real unpaired samples for endpoint-distribution alignment |
 | `models/model.py` | `FieldRFModel`, network assembly and velocity prediction |
 | `models/networks.py` | Gradient-safe MAISI UNet and source-latent adapter |
 | `models/rectified_flow.py` | Timestep remapping, RF paths and training velocity targets |
@@ -44,12 +44,10 @@ in `scripts/finetune_vae.py`, which matches cached latents to raw image patches.
 | `PairedFieldDataset` | Real same-subject, same-modality source/target field pairs | Final paired RF adaptation |
 | `PairedVisualizationDataset` | Matched prospective cases for rendering and validation | Visualization helpers |
 | `UnpairedEndpointAlignmentDataset` | Independent real source/reference caches in the same modality | Endpoint alignment with distribution losses |
-| `PairedAlignmentCacheDataset` | Same-anatomy synthetic-source / real-target cache pairs, optionally specified by a manifest | Auxiliary synthetic-alignment trainer |
 
 Independent samples from `UnpairedEndpointAlignmentDataset` are suitable for
 distribution matching, not voxel-wise reconstruction. Real paired adaptation
-uses `Training_prospective`; the auxiliary synthetic-alignment stage is a
-separate experiment.
+uses `Training_prospective`.
 
 ## Dependencies and paths
 
@@ -96,8 +94,7 @@ The original MAISI decoder gives a different protocol.
 
 Paired adaptation uses `Training_prospective` only. Brain-ID and the VAE remain
 frozen during paired RF adaptation. The RF, ControlNet and endpoint adapter
-are shared across fields and modalities. The synthetic-alignment trainer is
-retained as a helper covered by regression tests, rather than the final recipe.
+are shared across fields and modalities.
 
 
 ## Inference
@@ -123,11 +120,11 @@ explicit paths, and parameter layouts and state-dict keys are preserved.
 
 ## CPU regression tests
 
-The committed suite contains 25 tests in five files:
+The committed suite contains 24 tests in five files:
 
 | File | Tests | Coverage |
 |---|---:|---|
-| [test_alignment.py](tests/test_alignment.py) | 9 | Alignment losses, pair manifests, RF paths and truncated inversion |
+| [test_alignment.py](tests/test_alignment.py) | 8 | Unpaired reference sampling, endpoint losses, RF paths and truncated inversion |
 | [test_paired_dataset.py](tests/test_paired_dataset.py) | 3 | Same-subject/modality pairing, domain completeness and cross-field record counts |
 | [test_spatial_loss.py](tests/test_spatial_loss.py) | 3 | Fractional evaluation-slab weights and weighted L1 supervision |
 | [test_model_loading.py](tests/test_model_loading.py) | 6 | Full/EMA and raw UNet loading, source adaptation and invalid checkpoints |

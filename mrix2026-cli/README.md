@@ -40,7 +40,3 @@ export SYNTHSEG_BIN=/path/to/freesurfer/bin/mri_synthseg
 验证集 builder 使用 [constants.py](src/mrix2026_cli/constants.py) 中的
 `Z_CLIP_RANGE=(150,180)`。Task 1/2 的 pred 和 seg 应处于相同网格；Task 3
 不需要 segmentation。ZIP 内从模态目录开始，不含 `task1/` 等外层目录。
-
-
-旧 [standalone builder](../Submission/build_submission/build_submission.py)
-保留兼容入口，共用 CLI 的切片常量。

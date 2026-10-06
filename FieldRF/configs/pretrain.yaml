@@ -2,7 +2,6 @@
 # Stage 1: Rectified Flow L1 loss (no GAN, no graft).
 # Three-modality training: T1W + T2W + T2FLAIR all trained jointly.
 # Same architecture as T1W-only training: RF forward, [64,64] ControlNet, Euler ODE.
-# All other params (LR, bridge arch, VAE) identical to pretrain_t1w.yaml.
 #
 # Architecture:
 #   RF: z_t = (1-t/T)*z_0 + (t/T)*noise, v = z_0 - noise.

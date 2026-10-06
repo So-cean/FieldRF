@@ -1,26 +1,13 @@
-"""Unified inference entry point for MRIxFields2026 baselines.
+"""Unified inference for retained MRIxFields2026 baseline methods.
 
-Supports CUT, CycleGAN, StarGAN v2, ITTR, and SwinUNet.
+Runtime configuration is embedded in each checkpoint. Run from Baseline/:
 
-Usage:
-    # CUT / CycleGAN / ITTR / SwinUNet
-    python scripts/inference.py --config configs/task1/cut/0.1T_to_7T_T1W.yaml \
-        --checkpoint $OUTPUT_DIR/task1_0.1T_to_7T_T1W/cut/retro_scratch/weights/generator_final.pth \
-        --input_dir $DATA_DIR/Validating_prospective/T1W/0.1T/ \
-        --output_dir $INFERENCE_DIR/
+    python scripts/inference.py --checkpoint /path/to/generator_final.pth
+        --input_dir /path/to/Validating_prospective/T1W/0.1T
+        --output_dir /path/to/predictions
 
-    # StarGAN v2 (config is embedded in checkpoint)
-    python scripts/inference.py \
-        --checkpoint $OUTPUT_DIR/task3_any_to_any_multimodal/starganv2/retro_scratch/weights/generator_final.pth \
-        --input_dir $DATA_DIR/Validating_prospective/T1W/0.1T/ \
-        --output_dir $INFERENCE_DIR/ \
-        --source_field 0.1T --target_field 7T \
-        --source_modality T1W --target_modality T1W
-
-After inference, run SynthSeg segmentation:
-    python Evaluation/segment.py \
-        --input_dir $INFERENCE_DIR/ \
-        --output_dir ${INFERENCE_DIR}_seg/
+StarGAN v2 also accepts explicit source/target field and modality arguments.
+Use the submission CLI for segmentation and packaging after inference.
 """
 
 import argparse
@@ -46,7 +33,6 @@ import mrixfields.inference as I
 
 _METHOD_PREFIX = {
     "cut": "CUT",
-    "cut_seg": "CUT",
     "cut3d": "CUT3D",
     "cyclegan": "CycleGAN",
     "nafnet": "NAFNet",

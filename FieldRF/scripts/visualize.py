@@ -83,7 +83,7 @@ def run_vis(
     vae = load_vae(vae_cfg["checkpoint"], device)
     sw_cfg = vae_cfg.get("sliding_window", {"roi_size": [128, 128, 64]})
 
-    output_dir = Path(cfg.get("output_dir", "runs/pretrain_t1w")) / "vis"
+    output_dir = Path(cfg.get("output_dir", "runs/pretrain")) / "vis"
     output_dir.mkdir(parents=True, exist_ok=True)
 
     bridge.eval()

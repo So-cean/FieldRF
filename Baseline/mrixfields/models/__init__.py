@@ -1,6 +1,5 @@
 """Models module."""
 
-from .vinn_seg import FastSurferVINN2D
 from .base_gan_model import BaseGANModel
 from .cut_model import CUTModel
 from .cut3d_model import CUTModel3D
@@ -32,7 +31,6 @@ __all__ = [
     "NAFNetModel",
     "CUTModel3D",
     "CycleGANModel",
-    "FastSurferVINN2D",
     "ITTRGenerator",
     "ITTRModel",
     "MappingNetwork",

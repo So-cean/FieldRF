@@ -14,7 +14,6 @@ import torch.nn as nn
 from ..env import get_device
 from ..losses.perceptual import PerceptualLoss
 from ..losses.structure import SSIMLoss, StructureLoss
-from ..losses.vinn_seg_loss import VINNSegLoss
 from ..utils_dist import get_dist_info, is_main_process
 
 
@@ -394,26 +393,6 @@ class BaseTrainer(ABC):
                               batch_info=batch_info, batch_info_b=batch_info_b,
                               field_strength=fs or "")
 
-        # Seg visualisation (VINN) — independent, same frequency
-        if (hasattr(self, "model") and hasattr(self.model, "_seg_loss_fn")
-                and self.model._seg_loss_fn is not None):
-            try:
-                from ..utils.visualizer import save_seg_visuals
-                seg_fn = self.model._seg_loss_fn
-                batch_small = max(real_A.shape[0] // 2, 1)
-                segs = {}
-                for name, tensor in [
-                    ("real_A", real_A[:batch_small]),
-                    ("fake_B", fake_B[:batch_small]),
-                    ("real_B", real_B[:batch_small]),
-                ]:
-                    if tensor is not None:
-                        segs[f"seg_{name}"] = seg_fn.predict(tensor)
-                if idt_B is not None:
-                    segs["seg_idt_B"] = seg_fn.predict(idt_B[:batch_small])
-                save_seg_visuals(segs, self.visuals_dir, epoch=epoch)
-            except Exception as e:
-                print(f"[WARN] seg visualisation failed: {e}")
 
     # ------------------------------------------------------------------ #
     #  Finetune losses helper
@@ -430,15 +409,6 @@ class BaseTrainer(ABC):
         if self.lambda_edge > 0:
             self.criterion_edge = StructureLoss(ssim_weight=0.0, edge_weight=1.0).to(self.device)
 
-        seg_ckpt = finetune_cfg.get("seg_unet_ckpt", "")
-        self.lambda_seg = finetune_cfg.get("loss_seg", 0.0)
-        self.criterion_seg = None
-        if self.lambda_seg > 0 and seg_ckpt:
-            if os.path.exists(seg_ckpt):
-                self.criterion_seg = VINNSegLoss(seg_ckpt, device=self.device)
-            else:
-                print(f"  WARNING: seg_unet_ckpt not found: {seg_ckpt} — seg loss disabled")
-                self.lambda_seg = 0.0
 
     def _compute_finetune_loss(self, pred, target):
         loss = self.lambda_l1 * self.criterion_l1(pred, target)
@@ -461,17 +431,6 @@ class BaseTrainer(ABC):
             loss = loss + self.lambda_ssim * self.criterion_ssim(pred_01, tgt_01)
         if self.lambda_edge > 0:
             loss = loss + self.lambda_edge * self.criterion_edge(pred_01, tgt_01)
-        if self.lambda_seg > 0 and self.criterion_seg is not None:
-            if self._norm_stats is not None:
-                mu_t = torch.tensor(self._norm_stats["mu_tgt"],
-                                    device=target.device).view(1, -1, 1, 1)
-                sg_t = torch.tensor(self._norm_stats["sigma_tgt"],
-                                    device=target.device).view(1, -1, 1, 1)
-                pred_m11 = pred * sg_t + mu_t
-                target_m11 = target * sg_t + mu_t
-            else:
-                pred_m11, target_m11 = pred, target
-            loss = loss + self.lambda_seg * self.criterion_seg(pred_m11, target_m11)
         return loss
 
     # ------------------------------------------------------------------ #

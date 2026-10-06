@@ -43,7 +43,6 @@ import mrixfields.trainers as T
 
 METHOD_MAP = {
     "cut": "CUT",
-    "cut_seg": "CUT",
     "cut3d": "CUT3D",
     "cyclegan": "CycleGAN",
     "nafnet": "NAFNet",
@@ -53,7 +52,7 @@ METHOD_MAP = {
     "unsb": "UNSB",
 }
 
-_SUPPORT_FINETUNE = {"cut", "cut_seg", "cut3d", "cyclegan", "nafnet", "starganv2", "ittr", "restormer"}
+_SUPPORT_FINETUNE = {"cut", "cut3d", "cyclegan", "nafnet", "starganv2", "ittr", "restormer"}
 
 
 def load_config(config_path: str) -> dict:

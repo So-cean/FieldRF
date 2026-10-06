@@ -65,9 +65,6 @@ class BaseGANModel(nn.Module):
         self.ema_decay = opt.get("ema_decay", 0.999)
         self.lr_D = opt.get("lr_D") or self.lr
         self.lambda_LNCC = opt.get("lambda_LNCC", 0.0)
-        self.lambda_seg = opt.get("lambda_seg", 0.0)
-        self.lambda_seg_idt = opt.get("lambda_seg_idt", 0.0)
-        self.seg_loss_ckpt = opt.get("seg_loss_ckpt", "")
         self.lambda_idt = opt.get("lambda_idt", 0.0)
         self.lambda_idt_loss_type = opt.get("lambda_idt_loss_type", "smoothl1")
 
@@ -116,13 +113,6 @@ class BaseGANModel(nn.Module):
                 self.criterionIdt = nn.MSELoss()
             else:
                 self.criterionIdt = nn.SmoothL1Loss()
-        self._seg_loss_fn = None
-        seg_ckpt = opt.get("seg_loss_ckpt", "")
-        if opt.get("lambda_seg", 0.0) > 0 and seg_ckpt:
-            from ..losses.vinn_seg_loss import VINNSegLoss
-            sf = opt.get("vinn_scale_factor", 2.0)
-            self._seg_loss_fn = VINNSegLoss(seg_ckpt, scale_factor=sf)
-            self.add_module("seg_loss", self._seg_loss_fn)
 
     # ── Init ────────────────────────────────────────────────────────
 
@@ -207,19 +197,11 @@ class BaseGANModel(nn.Module):
             loss_LNCC = self.criterionLNCC(self.fake_B, real_A) * self.lambda_LNCC
         else:
             loss_LNCC = 0.0
-        if self._seg_loss_fn is not None and self.lambda_seg > 0.0:
-            loss_seg = self._seg_loss_fn(self.fake_B, real_A) * self.lambda_seg
-        else:
-            loss_seg = 0.0
-        if self._seg_loss_fn is not None and self.lambda_seg_idt > 0.0 and self.idt_B is not None:
-            loss_seg_idt = self._seg_loss_fn(self.idt_B, real_B) * self.lambda_seg_idt
-        else:
-            loss_seg_idt = 0.0
         if self.criterionIdt is not None and self.idt_B is not None and self.training:
             loss_idt = self.criterionIdt(self.idt_B, real_B) * self.lambda_idt
         else:
             loss_idt = 0.0
-        return loss_G_GAN + loss_NCE_both + loss_LNCC + loss_seg + loss_seg_idt + loss_idt
+        return loss_G_GAN + loss_NCE_both + loss_LNCC + loss_idt
 
     # ── NCE ─────────────────────────────────────────────────────────
 

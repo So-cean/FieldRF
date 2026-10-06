@@ -14,7 +14,6 @@ features, a shared rectified-flow network and paired cross-field adaptation.
 | [Evaluation/](Evaluation/README.md) | Reference evaluation implementation |
 | [Submission/](Submission/README.md) | Validation submission format and packaging |
 | [mrix2026-cli/](mrix2026-cli/README.md) | Segmentation, building, checking and ZIP utilities |
-| [Tutorial/](Tutorial/README.md) | Introductory baseline notebooks |
 
 ## Getting started
 
@@ -30,7 +29,7 @@ follow the [baseline guide](Baseline/README.md).
 
 ## Tests and experiment reproduction
 
-The [committed CPU test suite](FieldRF/tests/) contains 25 tests across five
+The [committed CPU test suite](FieldRF/tests/) contains 24 tests across five
 files. Install its dependencies and run it from the repository root:
 
 ```bash

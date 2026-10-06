@@ -172,7 +172,7 @@ def main():
     parser.add_argument("--config", default="configs/pretrain.yaml")
     parser.add_argument("--pretrain_ckpt", default=None)
     parser.add_argument("--resume", default=None,
-                        help="Resume from checkpoint (e.g. runs/pretrain_t1w/fieldrf_epoch50.pt)")
+                        help="Resume from checkpoint (e.g. runs/pretrain/fieldrf_epoch50.pt)")
     parser.add_argument("--dist", action="store_true")
     parser.add_argument("--n_epochs", type=int, default=None,
                         help="Override config train.n_epochs (for smoke testing)")
@@ -244,7 +244,7 @@ def main():
             "experiment; disable train.adv"
         )
 
-    output_dir = Path(cfg.get("output_dir", "runs/pretrain_t1w"))
+    output_dir = Path(cfg.get("output_dir", "runs/pretrain"))
     if is_main:
         output_dir.mkdir(parents=True, exist_ok=True)
         from utils.visualization import archive_metrics_csvs

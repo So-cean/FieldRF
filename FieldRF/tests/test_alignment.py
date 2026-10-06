@@ -1,23 +1,22 @@
-"""CPU unit tests for RF alignment data and RF coupling utilities."""
+"""CPU unit tests for maintained RF endpoint-alignment and coupling utilities."""
 
 from __future__ import annotations
 
-import csv
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 
+import blosc2
+import numpy as np
 import torch
 
 FIELDRF_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(FIELDRF_ROOT))
-sys.path.insert(0, str(FIELDRF_ROOT / "scripts"))
 
-from data.alignment_dataset import PairedAlignmentCacheDataset
+from data.alignment_dataset import UnpairedEndpointAlignmentDataset
 from models.endpoint_aligner import EndpointAligner
 from models.model import FieldRFModel
-from train_alignment import deterministic_pair_noise
 from utils.endpoint_alignment import (
     alignment_weight,
     endpoint_moment_loss,
@@ -43,6 +42,43 @@ class _InvertStub(torch.nn.Module):
 
 
 class AlignmentUtilityTests(unittest.TestCase):
+    def test_unpaired_reference_preserves_modality_without_subject_matching(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            split = "Training_retrospective"
+            for modality, value in [("T1W", 1.0), ("T2W", 2.0)]:
+                for field, subject, multiplier in [("0.1T", "0001", 1), ("7T", "9999", 3)]:
+                    stem = f"R_{modality}_{field}_{subject}"
+                    latent_dir = root / split / "latent" / modality / field
+                    feature_dir = root / split / "brainid_feat" / modality / field
+                    latent_dir.mkdir(parents=True)
+                    feature_dir.mkdir(parents=True)
+                    torch.save(
+                        {"latent": torch.full((4, 2, 2, 2), value * multiplier)},
+                        latent_dir / f"{stem}.pt",
+                    )
+                    blosc2.asarray(
+                        np.full(64 * 2 * 2 * 2, value * multiplier, dtype=np.float16),
+                        urlpath=str(feature_dir / f"{stem}.b2nd"),
+                        mode="w",
+                        meta={"shapes": {"feat4": [64, 2, 2, 2]}, "keys": ["feat4"]},
+                    )
+            dataset = UnpairedEndpointAlignmentDataset(
+                cache_root=root, split=split, modalities=["T1W", "T2W"],
+                source_fields=["0.1T"], reference_fields=["7T"],
+            )
+            self.assertEqual(len(dataset), 2)
+            for index in range(len(dataset)):
+                sample = dataset[index]
+                value = 1.0 if sample["modality"] == "T1W" else 2.0
+                self.assertTrue(sample["source_id"].endswith("0001"))
+                self.assertTrue(sample["reference_id"].endswith("9999"))
+                self.assertIn(sample["modality"], sample["reference_id"])
+                self.assertEqual(sample["reference_field"], "7T")
+                torch.testing.assert_close(sample["z_src"], torch.full((4, 2, 2, 2), value))
+                torch.testing.assert_close(sample["z_ref"], torch.full((4, 2, 2, 2), value * 3))
+                self.assertEqual(tuple(sample["feats_ref"][-1].shape), (64, 2, 2, 2))
+
     def test_endpoint_aligner_is_identity_at_initialization(self):
         aligner = EndpointAligner(hidden_channels=8, num_blocks=1)
         endpoint = torch.randn(2, 4, 8, 8, 8)
@@ -136,69 +172,6 @@ class AlignmentUtilityTests(unittest.TestCase):
                 [],
                 torch.tensor([0]),
                 n_infer_steps=0,
-            )
-
-    def test_pair_noise_is_stable_and_pair_specific(self):
-        reference = torch.empty(2, 1, 3, 3, 3)
-        first = deterministic_pair_noise(["a", "b"], reference, 2026)
-        second = deterministic_pair_noise(["a", "b"], reference, 2026)
-        changed = deterministic_pair_noise(["a", "c"], reference, 2026)
-
-        torch.testing.assert_close(first, second)
-        torch.testing.assert_close(first[0], changed[0])
-        self.assertFalse(torch.equal(first[1], changed[1]))
-
-    def test_manifest_filters_and_resolves_paths(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            filenames = (
-                "source.pt",
-                "source.b2nd",
-                "target.pt",
-                "target.b2nd",
-            )
-            for filename in filenames:
-                (root / filename).touch()
-            manifest = root / "pairs.csv"
-            columns = (
-                "pair_id",
-                "modality",
-                "source_field",
-                "target_field",
-                "source_latent",
-                "source_feat",
-                "target_latent",
-                "target_feat",
-            )
-            with manifest.open("w", newline="") as handle:
-                writer = csv.DictWriter(handle, fieldnames=columns)
-                writer.writeheader()
-                writer.writerow(
-                    {
-                        "pair_id": "T2W:subject:0.1T->7T",
-                        "modality": "T2W",
-                        "source_field": "0.1T",
-                        "target_field": "7T",
-                        "source_latent": filenames[0],
-                        "source_feat": filenames[1],
-                        "target_latent": filenames[2],
-                        "target_feat": filenames[3],
-                    }
-                )
-
-            dataset = PairedAlignmentCacheDataset(
-                manifest=manifest,
-                modalities=["T2W"],
-                source_fields=["0.1T"],
-                target_fields=["7T"],
-            )
-
-            self.assertEqual(len(dataset), 1)
-            self.assertEqual(
-                dataset.records[0]["pair_id"], "T2W:subject:0.1T->7T"
-            )
-            self.assertTrue(
-                Path(dataset.records[0]["source_latent"]).is_absolute()
             )
 
 
