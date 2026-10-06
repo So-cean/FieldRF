@@ -38,6 +38,7 @@ from utils.visualization import (
     eval_window_in_384, find_nifti_path, compute_metrics_eval,
     init_metrics_csv, render_vis_grid_vae, archive_metrics_csvs,
 )
+from models.checkpoint import load_vae_checkpoint
 
 
 # ── Dataset ── #
@@ -135,11 +136,8 @@ def build_vae(vae_cfg):
 
 
 def load_pretrained(vae, ckpt_path):
-    sd = torch.load(ckpt_path, map_location="cpu", weights_only=False)
-    sd = sd.get("state_dict") or sd.get("model") or sd
-    cleaned = {k.replace("autoencoder.", ""): v for k, v in sd.items()}
-    r = vae.load_state_dict(cleaned, strict=False)
-    print(f"[VAE] Loaded pretrained: missing={len(r.missing_keys)} unexpected={len(r.unexpected_keys)}")
+    load_vae_checkpoint(vae, ckpt_path)
+    print("[VAE] Loaded complete pretrained state (strict architecture check)")
 
 
 # ── Validation (RF-aligned, 2-column VAE grid) ── #
@@ -388,8 +386,11 @@ def main():
             perc.eval()
             if is_main: print(f"Perceptual loss: weight={perc_weight}")
         except Exception as e:
-            if is_main: print(f"Perceptual unavailable ({e}), disabled.")
-            perc_weight = 0.0
+            raise RuntimeError(
+                "Configured VAE perceptual loss could not be initialized. "
+                "Check torchvision/lpips dependencies and pretrained SqueezeNet weights, "
+                "or explicitly set train.perceptual_weight: 0 to disable this loss."
+            ) from e
 
     # ── Optimizer (decoder only) ──
     trainable_params = [p for p in vae.parameters() if p.requires_grad]

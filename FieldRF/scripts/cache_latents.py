@@ -18,6 +18,18 @@ from monai.apps.generation.maisi.networks.autoencoderkl_maisi import Autoencoder
 _FIELDRF = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_FIELDRF))
 from data.volume_dataset import VolumeDataset
+from models.checkpoint import load_vae_checkpoint
+
+
+def _save_latent(payload, path):
+    """Publish a cache only after its complete write; retain any previous file."""
+    path = Path(path)
+    temporary = path.with_name(path.name + ".tmp")
+    try:
+        torch.save(payload, temporary)
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def load_maisi_vae(checkpoint, device):
@@ -31,13 +43,7 @@ def load_maisi_vae(checkpoint, device):
         norm_float16=True, num_splits=4, dim_split=1,
     ).to(device)
 
-    state_dict = torch.load(checkpoint, map_location=device, weights_only=False)
-    if "state_dict" in state_dict:
-        state_dict = state_dict["state_dict"]
-    elif "model" in state_dict:
-        state_dict = state_dict["model"]
-    new_sd = {k.replace("autoencoder.", ""): v for k, v in state_dict.items()}
-    vae.load_state_dict(new_sd, strict=False)
+    load_vae_checkpoint(vae, checkpoint, map_location=device)
     vae.eval()
     for p in vae.parameters():
         p.requires_grad = False
@@ -50,6 +56,7 @@ def main():
     parser.add_argument("--vae_checkpoint", default=None)
     parser.add_argument("--split", default=None, help="Override data.split (e.g. Training_prospective)")
     parser.add_argument("--modality", default=None, help="Cache one modality instead of all configured modalities")
+    parser.add_argument("--overwrite", action="store_true", help="Regenerate existing latent caches")
     args = parser.parse_args()
 
     # Resolve config path relative to FieldRF/ dir
@@ -93,7 +100,7 @@ def main():
                 img = batch["image"].to(device)
                 fn = batch["filename"][0]
                 pt_path = field_dir / f"{fn.replace('.nii.gz', '')}.pt"
-                if pt_path.exists():
+                if pt_path.exists() and pt_path.stat().st_size > 0 and not args.overwrite:
                     saved += 1
                     continue
 
@@ -102,7 +109,7 @@ def main():
                         z_out = ae.encode(img)
                         z = z_out[0] if isinstance(z_out, tuple) else z_out
 
-                torch.save({"latent": z[0].detach().cpu().float(),
+                _save_latent({"latent": z[0].detach().cpu().float(),
                             "field_strength": batch["field_strength"][0],
                             "modality": batch["modality"][0]}, pt_path)
                 saved += 1

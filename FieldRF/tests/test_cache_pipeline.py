@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import torch
 import yaml
@@ -22,9 +23,50 @@ spec = importlib.util.spec_from_file_location(
 )
 feature_cache = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(feature_cache)
+from scripts.cache_latents import _save_latent
 
 
 class CachePipelineTests(unittest.TestCase):
+    def test_failed_latent_write_preserves_previous_cache(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "cache.pt"
+            _save_latent({"latent": torch.ones(1)}, path)
+            previous = path.read_bytes()
+
+            def interrupted_save(payload, temporary):
+                Path(temporary).write_bytes(b"partial")
+                raise OSError("interrupted write")
+
+            with patch("scripts.cache_latents.torch.save", side_effect=interrupted_save):
+                with self.assertRaisesRegex(OSError, "interrupted write"):
+                    _save_latent({"latent": torch.zeros(1)}, path)
+            self.assertEqual(path.read_bytes(), previous)
+            self.assertFalse(path.with_name(path.name + ".tmp").exists())
+
+    def test_async_feature_save_failure_is_counted(self):
+        with tempfile.TemporaryDirectory() as directory:
+            ds = [{"filename": "subject.nii.gz"}]
+            with patch.object(feature_cache, "_forward_one_with_retry", return_value=(None, {"feat4": torch.ones(1)})), \
+                 patch.object(feature_cache, "_save_feats_b2nd", side_effect=OSError("disk full")):
+                saved, skipped, errors, _, _ = feature_cache._run_field(
+                    "7T", Path(directory), ds, None, "cpu",
+                    {"batch_size": 1, "num_workers": 0}, [4], 1, 1, 1,
+                )
+            self.assertEqual((saved, skipped, errors), (0, 0, 1))
+
+    def test_feature_cache_limit_includes_already_cached_volumes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "first.b2nd").write_bytes(b"existing")
+            ds = [{"filename": "first.nii.gz"}, {"filename": "second.nii.gz"}]
+            with patch.object(feature_cache, "_forward_one_with_retry") as forward:
+                saved, skipped, errors, _, _ = feature_cache._run_field(
+                    "7T", root, ds, None, "cpu",
+                    {"batch_size": 1, "num_workers": 0}, [4], 1, 1, 1, max_volumes=1,
+                )
+            forward.assert_not_called()
+            self.assertEqual((saved, skipped, errors), (1, 1, 0))
+
     def test_cache_entrypoints_help_without_brainid(self):
         env = dict(os.environ, BRAINID_ROOT="/nonexistent/Brain-ID", PYTHONPATH="")
         for name in ["cache_latents.py", "cache_brainid_feat.py"]:

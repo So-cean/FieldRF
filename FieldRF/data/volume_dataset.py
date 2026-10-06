@@ -6,11 +6,6 @@ Plain Dataset (no PersistentDataset — dataset is small).
 
 from pathlib import Path
 
-import sys
-_BASELINE = Path(__file__).resolve().parent.parent.parent / "Baseline"
-if str(_BASELINE) not in sys.path:
-    sys.path.append(str(_BASELINE))
-
 import torch
 from monai.transforms import (
     Compose, LoadImaged, EnsureChannelFirstd, Orientationd,
@@ -18,6 +13,11 @@ from monai.transforms import (
 )
 
 TARGET_SIZE = (384, 384, 384)
+
+
+def list_nifti_files(data_root, split, modality, field_strength):
+    """List one MRI domain without importing the comparison baseline package."""
+    return sorted((Path(data_root) / split / modality / str(field_strength)).glob("*.nii.gz"))
 
 
 def dataset_transforms():
@@ -40,7 +40,6 @@ class VolumeDataset(torch.utils.data.Dataset):
                  cache_dir=None, max_volumes=0):
         self.data_root = Path(data_root)
         self._modality = modality
-        from mrixfields.data.utils import list_nifti_files
 
         if isinstance(field_strength, str):
             field_strengths = [field_strength]

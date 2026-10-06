@@ -5,7 +5,7 @@ Official evaluation code for the MRIxFields2026 challenge.
 ## Prerequisites
 
 Metric evaluation and SynthSeg segmentation use separate environments. See
-[main README](../README.md#3-set-up-environment) for the metric environment.
+[dependency setup](../docs/README.md#python-dependencies) for the metric environment.
 
 ```bash
 conda activate mf  # Evaluation/evaluate.py

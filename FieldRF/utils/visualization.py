@@ -8,14 +8,7 @@ import sys
 import time
 from pathlib import Path
 
-# Baseline project provides mrixfields package (list_nifti_files)
-_FIELDRF = Path(__file__).resolve().parent.parent
-_BASELINE = _FIELDRF.parent / "Baseline"
-if str(_BASELINE) not in sys.path:
-    sys.path.insert(0, str(_BASELINE))
-
 import numpy as np
-from pathlib import Path
 from typing import Optional
 
 import matplotlib
@@ -30,6 +23,8 @@ from monai.transforms import (
     SpatialPadd, CenterSpatialCropd, ScaleIntensityRanged, EnsureTyped,
 )
 from skimage.metrics import structural_similarity
+from models.checkpoint import load_vae_checkpoint
+from data.volume_dataset import list_nifti_files
 
 TARGET_SIZE = (384, 384, 384)
 
@@ -52,11 +47,7 @@ def load_vae(ckpt_path: str, device: torch.device) -> AutoencoderKlMaisi:
         use_checkpointing=False, use_convtranspose=False,
         norm_float16=True, num_splits=4, dim_split=1,
     ).to(device)
-    sd = torch.load(ckpt_path, map_location=device, weights_only=False)
-    sd = sd.get("state_dict") or sd.get("model") or sd
-    vae.load_state_dict(
-        {k.replace("autoencoder.", ""): v for k, v in sd.items()}, strict=False
-    )
+    load_vae_checkpoint(vae, ckpt_path, map_location=device)
     vae.eval()
     _VAE_CACHE[cache_key] = vae
     return vae
@@ -102,7 +93,6 @@ def get_brain_mask(data_root, split, modality, target_field, filename, roi_z):
 
     Returns: np.ndarray of shape (384, 384, roi_z), dtype=bool.
     """
-    from mrixfields.data.utils import list_nifti_files
 
     transform = Compose([
         LoadImaged(keys=["image"]),
@@ -249,7 +239,6 @@ def decode_volume_centered(vae, z, sw_cfg, amp_dtype, z_center):
 
 def find_nifti_path(data_root, split, modality, field, subject_id):
     """Return absolute path to P_{modality}_{field}_{subject_id}.nii.gz, or None."""
-    from mrixfields.data.utils import list_nifti_files
     target_name = f"P_{modality}_{field}_{subject_id}.nii.gz"
     for f in list_nifti_files(data_root, split, modality, str(field)):
         if Path(f).name == target_name:

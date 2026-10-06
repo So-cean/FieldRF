@@ -59,6 +59,12 @@ The current tests check:
   initialization, and consistent paired RF/aligner EMA selection.
 - ZIP modality roots, relative output paths and nonzero CLI failure status.
 
+A subsequent release review passed **42 tests with 9 subtests** (40 FieldRF
+and 2 submission CLI), including strict VAE restoration, interrupted latent
+writes, asynchronous feature-save failures, cache limits and checkpoint-derived
+inversion settings. These are CPU regressions; the GPU record below remains
+tied to its stated source revisions.
+
 The independent integration check also runs a reduced CUT optimization step,
 loads its embedded configuration through the public inference script and
 verifies NIfTI shape/affine preservation. Synthetic complete Task 1 and Task 3
@@ -187,6 +193,15 @@ The short run checks execution and artifact consistency on real inputs. It
 does not reproduce full-dataset, full-duration training or published challenge
 metrics. NPU/DDP execution, all five target-field inference sweeps, and GPU
 SynthSeg/submission evaluation were not included in this pipeline check.
+A source review found that `scripts/train.py` computes the RF loss through
+`bridge.module`, and `scripts/finetune_vae.py` decodes through `vae.module` after
+wrapping their models in DDP. Both paths bypass `DDP.forward`. A two-process
+CPU reproducer demonstrated divergent weights when bypassing the wrapper,
+and matching weights when using its forward call. FieldRF RF/VAE distributed
+training is therefore currently unsupported; use a single device until the
+distributed paths are corrected and validated. This finding concerns FieldRF,
+not the separate baseline trainers.
+
 The environment reused an existing PyTorch stack rather than resolving all
 dependencies from an empty environment. Reference evaluation implementations
 are unchanged.

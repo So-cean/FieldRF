@@ -11,7 +11,7 @@ Storage format:
   blosc2.asarray(1D_buffer, meta={"shapes": {"feat0": [...], ...}, "dtype": "float16"})
 
 Modes (--feats):
-  all      : cache feat0-4 (default, for RF multi-scale injection)
+  all      : cache feat0-4 for multi-scale injection
   0,1,2,3,4: cache specific levels (comma-separated, e.g. "3,4")
 
 Feature geometry:
@@ -172,7 +172,7 @@ def _run_field(field_val, field_dir, ds, model, device, loader_kwargs,
     """
     loader_kwargs = dict(loader_kwargs)
     loader = DataLoader(ds, **loader_kwargs)
-    total = len(ds)
+    total = min(len(ds), max_volumes) if max_volumes > 0 else len(ds)
 
     save_executor = ThreadPoolExecutor(max_workers=save_workers)
     saved = 0
@@ -187,7 +187,9 @@ def _run_field(field_val, field_dir, ds, model, device, loader_kwargs,
     n_timed = 0
     t_last_iter_end = time.time()
 
-    for batch in loader:
+    for index, batch in enumerate(loader):
+        if index >= total:
+            break
         t_iter_start = time.time()
         t_load += t_iter_start - t_last_iter_end
 
@@ -231,6 +233,7 @@ def _run_field(field_val, field_dir, ds, model, device, loader_kwargs,
             except Exception as e:
                 print(f"  Error save {f}: {e}")
                 errors += 1
+                saved -= 1
         pending = [p for p in pending if p not in done]
 
         # Throttle: cap pending queue (each ~400 MB with pool=2, ~1.2 GB without)
@@ -242,17 +245,13 @@ def _run_field(field_val, field_dir, ds, model, device, loader_kwargs,
             except Exception as e:
                 print(f"  Error save {fn_old}: {e}")
                 errors += 1
+                saved -= 1
 
         n_timed += 1
         t_last_iter_end = time.time()
 
         if saved % 5 == 0:
             _print_progress(saved, total, t0)
-
-        # Smoke test: stop after max_volumes (if set)
-        if max_volumes > 0 and saved >= max_volumes:
-            print(f"  [smoke] reached max_volumes={max_volumes}, stopping early")
-            break
 
     # Wait for all pending saves
     for fn_pend, fut_pend, pt_pend in pending:
@@ -261,6 +260,7 @@ def _run_field(field_val, field_dir, ds, model, device, loader_kwargs,
         except Exception as e:
             print(f"  Error save {fn_pend}: {e}")
             errors += 1
+            saved -= 1
     pending.clear()
     save_executor.shutdown(wait=True)
 
@@ -293,9 +293,9 @@ def main():
                         help="Override config fields (e.g. 0.1T 1.5T)")
     parser.add_argument("--modality", default=None,
                         help="Override config modality (e.g. T1W, T2W, T2FLAIR)")
-    parser.add_argument("--feats", default="all",
+    parser.add_argument("--feats", default="4",
                         help="Features to cache: 'all' (feat0-4) or comma-separated "
-                             "levels (e.g. '3,4'). Default: all")
+                             "levels (e.g. '3,4'). Default: 4 for the supplied ControlNet")
     parser.add_argument("--feat4_pool", type=int, default=None, choices=[1, 2],
                         help="feat4 pooling: 1=192^3, 2=96^3; default matches the configured ControlNet pyramid")
     parser.add_argument("--num_workers", type=int, default=8,
@@ -366,6 +366,7 @@ def main():
     model.eval()
 
     # torch.compile for speedup
+    original_get_feature = model.backbone.get_feature
     try:
         print("Compiling feature extractor...")
         model.backbone.get_feature = torch.compile(
@@ -378,9 +379,11 @@ def main():
         torch.cuda.synchronize()
         print("Brain-ID loaded + compiled.")
     except Exception as e:
+        model.backbone.get_feature = original_get_feature
         print(f"  torch.compile skipped ({e})")
         print("Brain-ID loaded (no compile).")
 
+    error_count = 0
     for modality in modalities:
         # ── Output root (cache name from config, used verbatim) ──
         # The config's feat_cache_name should reflect the pooling (e.g.
@@ -414,9 +417,14 @@ def main():
             )
             print(f"  Done: {n_saved}/{len(ds)} (skipped {n_skipped}, "
                   f"errors {n_errors}) in {elapsed:.0f}s @ {rate:.2f} vol/s")
+            error_count += n_errors
 
         print("Done.")
+    if error_count:
+        print(f"Feature cache incomplete: {error_count} errors", file=sys.stderr)
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

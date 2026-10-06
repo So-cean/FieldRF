@@ -9,6 +9,8 @@ description = "FieldRF — Anatomy-Conditioned 3D Rectified Flow for Cross-Field
 requires-python = ">=3.10"
 dependencies = [
     "torch",
+    "torchvision",
+    "lpips",
     "monai",
     "einops",
     "numpy",

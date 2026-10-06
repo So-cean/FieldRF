@@ -10,7 +10,8 @@ import torch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from models.model import FieldRFModel  # noqa: E402
 from models.endpoint_aligner import EndpointAligner
-from scripts.inference import load_endpoint_aligner
+from scripts.inference import load_endpoint_aligner, resolve_inversion
+from models.checkpoint import load_vae_checkpoint
 
 
 MODEL_OPTIONS = dict(
@@ -162,6 +163,44 @@ class ModelLoadingTests(unittest.TestCase):
         self.assertTrue(continued.include_fc)
         for name, value in loaded.state_dict().items():
             torch.testing.assert_close(continued.state_dict()[name], value, rtol=0, atol=0)
+
+
+class VAEAndInversionTests(unittest.TestCase):
+    def test_vae_restores_raw_wrapped_and_prefixed_weights(self):
+        source = torch.nn.Linear(3, 2)
+        state = source.state_dict()
+        payloads = [state, {"state_dict": state}, {"model": {
+            "module.autoencoder." + key: value for key, value in state.items()
+        }}]
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "vae.pt"
+            for payload in payloads:
+                with self.subTest(layout=list(payload)):
+                    torch.save(payload, path)
+                    restored = torch.nn.Linear(3, 2)
+                    load_vae_checkpoint(restored, path)
+                    for key, value in state.items():
+                        torch.testing.assert_close(restored.state_dict()[key], value, rtol=0, atol=0)
+
+    def test_vae_rejects_partial_and_unexpected_weights(self):
+        model = torch.nn.Linear(3, 2)
+        state = model.state_dict()
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "vae.pt"
+            for payload in [{"weight": state["weight"]}, state | {"other": torch.ones(1)}]:
+                with self.subTest(keys=list(payload)):
+                    torch.save(payload, path)
+                    with self.assertRaisesRegex(RuntimeError, "MAISI VAE checkpoint mismatch"):
+                        load_vae_checkpoint(model, path)
+
+    def test_inference_uses_checkpoint_inversion_and_explicit_overrides(self):
+        paired = {"inversion": {"steps": 20, "solver": "euler"}}
+        unpaired = {"unpaired_alignment": {"inversion_steps": 4, "inversion_solver": "heun"}}
+        self.assertEqual(resolve_inversion(paired), (20, "euler"))
+        self.assertEqual(resolve_inversion(unpaired), (4, "heun"))
+        self.assertEqual(resolve_inversion(paired, steps=12, solver="heun"), (12, "heun"))
+        with self.assertRaisesRegex(ValueError, "Invalid source inversion"):
+            resolve_inversion(paired, steps=0)
 
 
 if __name__ == "__main__":

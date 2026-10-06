@@ -176,7 +176,7 @@ Run the CPU suite from the repository root:
 python -m pytest -q FieldRF/tests mrix2026-cli/tests
 ```
 
-**36 tests with 4 subtests passed.** A separate real-data check on one A100 80GB
+**42 tests with 9 subtests passed.** A separate real-data check on one A100 80GB
 used the full network: 45 latent and 45 Brain-ID caches, short runs of all four
 training stages, a complete 60-pair fine-tuning epoch, and 25 inference outputs.
 Caches/weights were finite, the VAE encoder was unchanged and its decoder
@@ -187,7 +187,9 @@ subject and one volume per split/modality/field. Run each stage for one epoch
 (`--n_epochs 1`; VAE uses `--epochs 1`), change both RF bases to `fieldrf_epoch1.pt`
 and use the resulting aligner/decoder paths. See the
 [smoke instructions and test record](REPRODUCIBILITY.md#run-an-isolated-small-data-check)
-for details. Full-duration benchmark metrics and NPU/DDP were not verified.
+for details. Full-duration benchmark metrics and NPU execution were not verified.
+Use single-device FieldRF training: the RF/VAE DDP branches currently bypass
+gradient synchronization; see [remaining limits](REPRODUCIBILITY.md#remaining-limits).
 
 For comparison methods, configure `.env` from `.env.example` and follow the
 [baseline guide](Baseline/README.md).

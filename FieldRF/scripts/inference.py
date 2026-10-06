@@ -66,6 +66,20 @@ def load_endpoint_aligner(checkpoint, device):
     return aligner.to(device).float().eval(), key
 
 
+def resolve_inversion(config, steps=None, solver=None):
+    """Use the selected checkpoint's paired or unpaired inversion settings."""
+    unpaired = config.get("unpaired_alignment", {})
+    paired = config.get("inversion", {})
+    transport = config.get("inference", {}).get("endpoint_transport", {})
+    if steps is None:
+        steps = unpaired.get("inversion_steps", paired.get("steps", transport.get("inversion_steps", 4)))
+    if solver is None:
+        solver = unpaired.get("inversion_solver", paired.get("solver", transport.get("inversion_solver", "euler")))
+    if int(steps) < 1 or solver not in {"euler", "heun"}:
+        raise ValueError(f"Invalid source inversion: steps={steps}, solver={solver}")
+    return int(steps), solver
+
+
 def map_to_original_space(harm_64, orig_nifti_path, roi_z, z_center):
     """Mask bg with source brain mask at z_center, then place 64 slices
     (centered at z_center) back into original image space.
@@ -175,7 +189,7 @@ def main():
     )
     parser.add_argument("--split", default="Validating_prospective",
                         choices=["Training_prospective", "Validating_prospective"])
-    parser.add_argument("--source_fields", nargs="+", default=["0.1T", "1.5T", "3T", "5T"],
+    parser.add_argument("--source_fields", nargs="+", choices=FIELDS, default=None,
                         help="Source fields to process.")
     parser.add_argument("--target_field", default="7T",
                         help="Target field (always 7T for task1).")
@@ -196,8 +210,8 @@ def main():
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--decoded_z_center", type=int, default=175,
                         help="RAS Z center for the 64 decoded slices in 384³ space.")
-    parser.add_argument("--modalities", nargs="+", default=["T1W", "T2W", "T2FLAIR"],
-                        help="Modalities to process.")
+    parser.add_argument("--modalities", nargs="+", choices=MODALITIES, default=None,
+                        help="Modalities to process (default: configured modalities).")
     parser.add_argument("--method", default="fieldrf",
                         help="Method string for sweep directory.")
     parser.add_argument("--mode", default="stage1_3mod",
@@ -233,14 +247,15 @@ def main():
     n_infer = args.n_infer_steps or cfg.get("inference", {}).get("n_infer_steps", 20)
     scale_factor = float(cfg["vae"]["scale_factor"])
     if args.task == "task3":
-        source_fields = list(FIELDS)
+        source_fields = list(args.source_fields or FIELDS)
         target_fields = list(args.target_fields or FIELDS)
     else:
-        source_fields = args.source_fields
+        source_fields = args.source_fields or ["0.1T", "1.5T", "3T", "5T"]
         target_fields = list(args.target_fields or [args.target_field])
     cache_root = data_cfg["cache_root"]
     data_root = data_cfg["data_root"]
-    modalities = args.modalities
+    modalities = args.modalities or data_cfg.get("modalities", [data_cfg.get("modality", "T1W")])
+    feature_cache_name = data_cfg.get("feat_cache_name", "brainid_feat")
 
     # Output root: sweep-format directory for mrix2026 build
     output_root = Path(args.output_dir or fieldrf_root / "predictions" / "pretrain")
@@ -327,15 +342,9 @@ def main():
         )
         endpoint_aligner, aligner_weight_source = load_endpoint_aligner(endpoint_state, device)
         endpoint_cfg = endpoint_state.get("config", {})
-        endpoint_method_cfg = endpoint_cfg.get("unpaired_alignment", {})
-        if inversion_steps is None:
-            inversion_steps = int(
-                endpoint_method_cfg.get("inversion_steps", 4)
-            )
-        if inversion_solver is None:
-            inversion_solver = str(
-                endpoint_method_cfg.get("inversion_solver", "euler")
-            )
+        inversion_steps, inversion_solver = resolve_inversion(
+            endpoint_cfg, inversion_steps, inversion_solver
+        )
         print(
             "Endpoint aligner ready: "
             f"weights={aligner_weight_source}, "
@@ -374,14 +383,13 @@ def main():
             print(f"\n--- Source: {sf} -> {active_targets} ---")
 
             # List subjects from Brain-ID cache
-            feat_dir = Path(cache_root) / args.split / "brainid_feat" / modality / sf
+            feat_dir = Path(cache_root) / args.split / feature_cache_name / modality / sf
             b2nd_files = sorted(feat_dir.glob("*.b2nd"))
             if args.max_volumes > 0:
                 b2nd_files = b2nd_files[:args.max_volumes]
 
             if not b2nd_files:
-                print(f"  No cached subjects for {modality}/{sf} in {args.split}.")
-                continue
+                raise FileNotFoundError(f"No cached subjects found in {feat_dir}")
 
             print(f"  Found {len(b2nd_files)} subjects.")
 
@@ -421,6 +429,11 @@ def main():
                     )
                     continue
 
+                src_nii = find_nifti_path(data_root, args.split, modality, sf, subj_id)
+                if src_nii is None:
+                    raise FileNotFoundError(
+                        f"Source NIfTI reference grid not found: {modality}/{sf}/{subj_id}"
+                    )
                 transport_endpoint = None
                 if args.source_endpoint_transport or endpoint_aligner is not None:
                     # Transport from the real source latent. An optional
@@ -466,7 +479,6 @@ def main():
                             source_endpoint.float(),
                             source_class_tensor,
                         )
-                src_nii = find_nifti_path(data_root, args.split, modality, sf, subj_id)
                 for target_field in pending_targets:
                     target_class_tensor = torch.tensor(
                         [get_class_label(modality, target_field)],
@@ -500,16 +512,9 @@ def main():
                         (harm_img + 1) / 2, 0, 1
                     )[0, 0].float().cpu().numpy()
 
-                    if src_nii:
-                        harm_orig, out_affine = map_to_original_space(
-                            harm_np, src_nii, roi_z, zc
-                        )
-                    else:
-                        print(
-                            "  WARNING: source NIfTI not found for "
-                            f"{modality}/{sf}/{subj_id}, using raw"
-                        )
-                        harm_orig, out_affine = harm_np, np.eye(4)
+                    harm_orig, out_affine = map_to_original_space(
+                        harm_np, src_nii, roi_z, zc
+                    )
 
                     out_path = output_paths[target_field]
                     out_path.parent.mkdir(parents=True, exist_ok=True)

@@ -10,6 +10,26 @@ import torch
 from utils.domains import NUM_CLASSES
 
 
+def load_vae_checkpoint(vae, checkpoint_path, map_location="cpu"):
+    """Restore a complete raw, wrapped or DDP-prefixed MAISI VAE checkpoint."""
+    state = torch.load(checkpoint_path, map_location=map_location, weights_only=False)
+    if "state_dict" in state:
+        state = state["state_dict"]
+    elif "model" in state:
+        state = state["model"]
+    cleaned = {}
+    for key, value in state.items():
+        while key.startswith(("module.", "autoencoder.")):
+            key = key.split(".", 1)[1]
+        if key in cleaned:
+            raise RuntimeError(f"Duplicate VAE checkpoint parameter: {key}")
+        cleaned[key] = value
+    try:
+        vae.load_state_dict(cleaned, strict=True)
+    except RuntimeError as error:
+        raise RuntimeError(f"MAISI VAE checkpoint mismatch: {checkpoint_path}\n{error}") from error
+
+
 def infer_resblock_updown(state_dict, prefix=""):
     """Recognize MAISI residual samplers or legacy convolutional samplers."""
     keys = [key for key in state_dict if key.startswith(prefix)]

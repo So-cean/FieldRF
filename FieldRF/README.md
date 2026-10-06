@@ -15,7 +15,7 @@ ControlNet, unpaired pretraining and paired cross-field adaptation.
 | `models/networks.py` | Gradient-safe MAISI UNet and source-latent adapter |
 | `models/rectified_flow.py` | Timestep remapping, RF paths and training velocity targets |
 | `models/sampling.py` | Euler/Heun inversion, reverse sampling and differentiable graft generation |
-| `models/checkpoint.py` | Pretrained/full RF loading, EMA restoration and source-channel adaptation |
+| `models/checkpoint.py` | Strict VAE/pretrained/full RF loading, EMA restoration and source-channel adaptation |
 | `models/losses.py` | RF velocity loss, spatially weighted supervision and paired latent/gradient loss |
 | `models/endpoint_aligner.py` | `EndpointAligner`, shared domain-conditioned endpoint correction |
 | `utils/domains.py` | Modality/field labels shared by data and models |
@@ -82,15 +82,15 @@ augmentation is used by default.
 
 ## CPU regression tests
 
-The committed suite contains 34 tests in six files:
+The committed suite contains 40 tests in six files:
 
 | File | Tests | Coverage |
 |---|---:|---|
-| [test_cache_pipeline.py](tests/test_cache_pipeline.py) | 3 | Cache entry points, feature geometry and native cache → real RF training → checkpoint reload → sampling |
+| [test_cache_pipeline.py](tests/test_cache_pipeline.py) | 6 | Atomic writes, asynchronous failures, cache limits, entry points, feature geometry and native cache → real RF training → checkpoint reload → sampling |
 | [test_alignment.py](tests/test_alignment.py) | 8 | Unpaired reference sampling, endpoint losses, RF paths and truncated inversion |
 | [test_paired_dataset.py](tests/test_paired_dataset.py) | 3 | Same-subject/modality pairing, domain completeness and cross-field record counts |
 | [test_spatial_loss.py](tests/test_spatial_loss.py) | 3 | Fractional evaluation-slab weights and weighted L1 supervision |
-| [test_model_loading.py](tests/test_model_loading.py) | 13 | Full/EMA and raw UNet loading, source adaptation and invalid checkpoints |
+| [test_model_loading.py](tests/test_model_loading.py) | 16 | Full/EMA and raw UNet loading, strict VAE restoration, source adaptation, invalid checkpoints and inversion configuration |
 | [test_sampling.py](tests/test_sampling.py) | 4 | Euler/Heun direction, latent scaling, gradient propagation and deterministic endpoint reversal |
 
 From the repository root:
