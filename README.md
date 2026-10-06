@@ -198,16 +198,24 @@ See [LICENSE](LICENSE).
 
 ## Citation
 
-If you use FieldRF, please cite the paper:
+If you use FieldRF, please cite the paper from the MRIxFields2026 satellite event
+at MICCAI 2026. The proceedings metadata follows the
+[official MICCAI record](https://papers.miccai.org/miccai-2026-sat/MRIxFields2026_026.html):
 
 ```bibtex
-@misc{song2026fieldrf,
-  title = {FieldRF: Anatomy-Conditioned 3D Rectified Flow for Unified Cross-Field MRI Harmonization},
+@inproceedings{SonHai_FieldRF_MICCAISAT2026,
   author = {Song, Haiyu and Xiang, Lei and Yang, Zongjian and Wu, Yang and Shen, Dinggang and Wang, Qian},
+  title = {{FieldRF: Anatomy-Conditioned 3D Rectified Flow for Unified Cross-Field MRI Harmonization}},
+  booktitle = {Medical Image Computing and Computer Assisted Intervention -- MICCAI 2026 Workshops and Challenges},
+  series = {Lecture Notes in Computer Science},
+  volume = {17274},
+  publisher = {Springer Nature Switzerland},
   year = {2026},
-  url = {https://papers.miccai.org/miccai-2026-sat/paper/MRIxFields2026_026.pdf}
+  url = {https://papers.miccai.org/miccai-2026-sat/MRIxFields2026_026.html}
 }
 ```
+
+DOI and page numbers are not yet available on the official page.
 
 The benchmark and evaluation framework come from
 [MRIxFields/MRIxFields2026](https://github.com/MRIxFields/MRIxFields2026).
