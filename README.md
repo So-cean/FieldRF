@@ -259,27 +259,31 @@ have not been remeasured by the CPU audit.
 
 ## Inference
 
-For shared Any-to-Any **source endpoint transport** using the epoch-20 RF EMA:
+For shared Any-to-Any transport using the jointly adapted epoch-20 RF and
+endpoint-aligner EMA:
 
 ```bash
 python scripts/inference.py \
   --config configs/finetune.yaml \
   --checkpoint runs/paired_finetune/fieldrf_paired_latest.pt \
   --vae_checkpoint runs/vae_finetune/vae_finetune_epoch1.pt \
-  --source_endpoint_transport --inversion_steps 20 --inversion_solver euler \
+  --endpoint_checkpoint runs/paired_finetune/fieldrf_paired_latest.pt \
+  --inversion_steps 20 --inversion_solver euler \
   --n_infer_steps 20 --task task3 --split Validating_prospective \
   --mode pro_pretrained --epoch_tag epoch20 \
   --output_dir /path/to/predictions
 ```
 
-This invocation transports the source endpoint directly. To apply the learned
-endpoint aligner as well, use the validation-selected paired artifact as **both**
-`--checkpoint runs/paired_finetune/fieldrf_paired_best_task3.pt` and
-`--endpoint_checkpoint runs/paired_finetune/fieldrf_paired_best_task3.pt`.
-That file stores the RF and endpoint-aligner weights together under EMA
-validation; set `--epoch_tag` to the actual selected epoch. Passing the original
-unpaired aligner would use its earlier weights instead of the jointly adapted
-aligner. Keep this inference choice explicit when comparing experiments.
+The full paired checkpoint stores the RF and endpoint-aligner EMA together.
+Both are selected automatically when present. To evaluate source endpoint
+transport without the learned aligner, omit `--endpoint_checkpoint` and add
+`--source_endpoint_transport`; keep the explicit inversion steps and solver.
+This is a different inference choice, so record it when comparing experiments.
+For validation-selected inference, use `fieldrf_paired_best_task3.pt` as both
+checkpoint arguments and set `--epoch_tag` to its actual selected epoch.
+That artifact already stores the jointly selected EMA weights. A separate
+unpaired aligner checkpoint contains its earlier weights and changes the
+protocol.
 
 Task 3 translates all five source fields into each of the other four fields
 with one shared model. Inference requires both caches for the chosen split, the
@@ -294,7 +298,7 @@ explicit paths, and parameter layouts and state-dict keys are preserved.
 
 ## Tests and experiment reproduction
 
-The [committed CPU test suite](FieldRF/tests/) contains 32 tests across six
+The [committed CPU test suite](FieldRF/tests/) contains 34 tests across six
 files. Install its dependencies and run it from the repository root:
 
 ```bash

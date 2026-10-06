@@ -51,6 +51,21 @@ from monai.transforms import (
 from nibabel.orientations import io_orientation, axcodes2ornt, ornt_transform, apply_orientation
 
 
+def load_endpoint_aligner(checkpoint, device):
+    """Restore the paired EMA aligner, or the selected legacy/best weights."""
+    options = checkpoint.get("endpoint_aligner_config", {})
+    aligner = EndpointAligner(
+        endpoint_channels=options.get("endpoint_channels", 4),
+        hidden_channels=options.get("hidden_channels", 24),
+        domain_embed_dim=options.get("domain_embed_dim", 8),
+        num_domains=options.get("num_domains", NUM_CLASSES),
+        num_blocks=options.get("num_blocks", 2),
+    )
+    key = "endpoint_aligner_ema" if "endpoint_aligner_ema" in checkpoint else "endpoint_aligner"
+    aligner.load_state_dict(checkpoint[key], strict=True)
+    return aligner.to(device).float().eval(), key
+
+
 def map_to_original_space(harm_64, orig_nifti_path, roi_z, z_center):
     """Mask bg with source brain mask at z_center, then place 64 slices
     (centered at z_center) back into original image space.
@@ -310,18 +325,7 @@ def main():
             map_location="cpu",
             weights_only=False,
         )
-        aligner_cfg = endpoint_state.get("endpoint_aligner_config", {})
-        endpoint_aligner = EndpointAligner(
-            endpoint_channels=aligner_cfg.get("endpoint_channels", 4),
-            hidden_channels=aligner_cfg.get("hidden_channels", 24),
-            domain_embed_dim=aligner_cfg.get("domain_embed_dim", 8),
-            num_domains=aligner_cfg.get("num_domains", NUM_CLASSES),
-            num_blocks=aligner_cfg.get("num_blocks", 2),
-        )
-        endpoint_aligner.load_state_dict(
-            endpoint_state["endpoint_aligner"],
-            strict=True,
-        )
+        endpoint_aligner, aligner_weight_source = load_endpoint_aligner(endpoint_state, device)
         endpoint_cfg = endpoint_state.get("config", {})
         endpoint_method_cfg = endpoint_cfg.get("unpaired_alignment", {})
         if inversion_steps is None:
@@ -332,9 +336,9 @@ def main():
             inversion_solver = str(
                 endpoint_method_cfg.get("inversion_solver", "euler")
             )
-        endpoint_aligner.to(device).float().eval()
         print(
             "Endpoint aligner ready: "
+            f"weights={aligner_weight_source}, "
             f"epoch={int(endpoint_state.get('epoch', -1)) + 1}, "
             f"inversion={inversion_solver}-{inversion_steps}, "
             f"validation_ssim="

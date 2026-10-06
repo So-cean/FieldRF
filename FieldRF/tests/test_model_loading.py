@@ -9,6 +9,8 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from models.model import FieldRFModel  # noqa: E402
+from models.endpoint_aligner import EndpointAligner
+from scripts.inference import load_endpoint_aligner
 
 
 MODEL_OPTIONS = dict(
@@ -122,6 +124,27 @@ class ModelLoadingTests(unittest.TestCase):
     def test_explicit_resampling_mismatch_is_rejected(self):
         with self.assertRaisesRegex(RuntimeError, "resampling architecture differs"):
             self.load({"bridge": self.model.state_dict()}, resblock_updown=True)
+
+    def test_paired_inference_restores_aligner_ema(self):
+        options = dict(endpoint_channels=4, hidden_channels=4, domain_embed_dim=4, num_blocks=1)
+        state = EndpointAligner(**options).state_dict()
+        ema = {key: value + 0.125 for key, value in state.items()}
+        restored, selected = load_endpoint_aligner(
+            {"endpoint_aligner_config": options, "endpoint_aligner": state, "endpoint_aligner_ema": ema}, "cpu"
+        )
+        self.assertEqual(selected, "endpoint_aligner_ema")
+        for key, value in ema.items():
+            torch.testing.assert_close(restored.state_dict()[key], value, rtol=0, atol=0)
+
+    def test_inference_keeps_legacy_or_selected_aligner_weights(self):
+        options = dict(endpoint_channels=4, hidden_channels=4, domain_embed_dim=4, num_blocks=1)
+        state = EndpointAligner(**options).state_dict()
+        restored, selected = load_endpoint_aligner(
+            {"endpoint_aligner_config": options, "endpoint_aligner": state}, "cpu"
+        )
+        self.assertEqual(selected, "endpoint_aligner")
+        for key, value in state.items():
+            torch.testing.assert_close(restored.state_dict()[key], value, rtol=0, atol=0)
 
     def test_pretrained_attention_projection_is_restored(self):
         options = MODEL_OPTIONS | {"attention_levels": (False, False, True, True)}
