@@ -66,7 +66,7 @@ reduced network widths; they do not measure MRI image quality.
 | Brain-ID source and pretrained weights | Initialize `third_party/Brain-ID` at `5d8a2d3eef507180b0cbff4cfe418cdfc5c55253`; obtain [Brain-ID weights](https://github.com/jhuldr/Brain-ID/blob/5d8a2d3eef507180b0cbff4cfe418cdfc5c55253/README.md#playing-with-brain-id-synthesizer-and-feature-extractor) and set `brainid.ckpt_path`; `BRAINID_ROOT` is an optional source override |
 | MAISI VAE and brain RF weights | Shared VAE from [NV-Generate-CT](https://huggingface.co/nvidia/NV-Generate-CT/blob/4156648ce44f5561b75d96b12600fe5afe6b6e8f/models/autoencoder_v1.pt); brain RF from [NV-Generate-MR-Brain](https://huggingface.co/nvidia/NV-Generate-MR-Brain/blob/67ba36a4d3aae5854d7f2f56638e26a641684433/models/diff_unet_3d_rflow-mr-brain_v0.pt); set `vae.checkpoint` and `bridge.ckpt_path` |
 | Latent / feature caches | Generate all configured modalities/fields for retrospective, prospective and inference splits; set `data.cache_root` |
-| Adapted decoder, endpoint aligner and paired RF | Produced by the [FieldRF stages](FieldRF/README.md#reproduction-pipeline); use the configured epoch selections |
+| Adapted decoder, endpoint aligner and paired RF | Produced by the [FieldRF stages](README.md#reproduction-pipeline); use the configured epoch selections |
 | Task 1/2 segmentations | Separate [SynthSeg](https://github.com/BBillot/SynthSeg) installation; configure `SYNTHSEG_BIN` |
 
 The RF initialization in the supplied recipe is
@@ -83,7 +83,7 @@ also restored a synthetic Brain-ID-format checkpoint containing an
 were used. This checks imports and legacy loading; it does not verify the
 downloaded pretrained weights or full-volume feature extraction.
 
-Follow the [complete reproduction procedure](FieldRF/README.md#reproduction-pipeline)
+Follow the [complete reproduction procedure](README.md#reproduction-pipeline)
 for submodule initialization, weight acquisition, YAML paths, both cache writers,
 the split requirements and downstream checkpoint selection.
 

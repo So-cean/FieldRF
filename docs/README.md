@@ -68,7 +68,7 @@ For FieldRF, configure `data.data_root`, `data.cache_root`, `vae.checkpoint`,
 The cache writer defaults to the pinned `third_party/Brain-ID` checkout;
 `BRAINID_ROOT` is an optional override for a different source checkout.
 Set `brainid.ckpt_path` in the pretraining configuration before feature caching.
-The [FieldRF reproduction guide](../FieldRF/README.md#reproduction-pipeline)
+The [FieldRF reproduction guide](../README.md#reproduction-pipeline)
 lists weight downloads, all configuration fields, cache-generation commands
 for all three splits, and the subsequent artifact dependencies. It also covers
 the command-scoped compatibility setting for loading Brain-ID's legacy
