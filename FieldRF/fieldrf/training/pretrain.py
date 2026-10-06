@@ -1,32 +1,16 @@
-"""FieldRF Training: RF identity pretraining and source-conditioned RF latent graft finetuning.
+"""RF pretraining and optional source-conditioned latent graft adaptation.
 
-Stage 1 (adv.enabled=False):
-  loss = rectified_flow_loss(bridge, z_0, feats, class_label, scale_factor)
-  (Rectified Flow: z_t = (1-t/T)*z_0 + (t/T)*noise, L1 on velocity)
-
-Stage 2 supports two source paths:
-  - concat: legacy source-conditioned RF [z_t | z_src] and random-t one-forward graft.
-  - adapter: identity RF's 4ch UNet stays intact; a zero-init, time-gated source
-    adapter is trained with active-source identity and pure-noise Euler grafts.
-
-Key differences from RF:
-  - Rectified Flow instead of SelfRDB bridge schedule.
-  - scale_factor uses MAISI pretrained default (0.97045) directly from config.
-  - Timestep-transform (MAISI recipe, scale=1.4, base=32³).
-  - ControlNet conditioning_embedding [64,64] (was [16,64]).
-  - No source endpoint projection (feat4_downsample, endpoint_proj removed).
-  - Euler ODE inference (was DDIM).
+The standard recipe trains identity RF with frozen Brain-ID feature caches.
+Optional source concatenation or a residual adapter supports graft objectives.
+DDP predictors, EMA and checkpoint state are managed by dedicated modules.
 """
 
-import argparse, os, sys, time, math, json
+import time, math
 from pathlib import Path
-from copy import deepcopy
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 import torch.distributed as dist
-from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 
@@ -36,108 +20,16 @@ import yaml
 # FieldRF imports
 from fieldrf.models.model import FieldRFModel  # noqa: E402
 from fieldrf.utils.diagnostics import controlnet_norms, source_channel_norms  # noqa: E402
-from fieldrf.utils.domains import get_class_label, NUM_CLASSES, MODALITIES  # noqa: E402
-from fieldrf.models.rectified_flow import timestep_transform  # noqa: E402
+from fieldrf.utils.domains import NUM_CLASSES
 from fieldrf.models.losses import rectified_flow_loss, spatial_axis_overlap_weights  # noqa: E402
-from fieldrf.data.dataset import MultiFieldCacheDataset, PairedVisualizationDataset
+from fieldrf.data.dataset import MultiFieldCacheDataset
 
 
+from fieldrf.training.ema import EMA
+from fieldrf.models.discriminator import LatentProjectionDiscriminator, lsgan_d_loss, lsgan_g_loss
+from fieldrf.training.distributed import setup_distributed, wrap_rf_submodules, wrap_module, synchronize
+from fieldrf.training.checkpoints import atomic_save, collect_rank_states, restore_rank_state
 
-# ── EMA ── #
-
-class EMA:
-    def __init__(self, model, decay=0.999):
-        self.decay = decay
-        self.shadow = {k: v.clone().detach() for k, v in model.state_dict().items()
-                       if v.dtype.is_floating_point}
-
-    @torch.no_grad()
-    def update(self, model):
-        for k, v in model.state_dict().items():
-            if k in self.shadow:
-                self.shadow[k].mul_(self.decay).add_(v, alpha=1 - self.decay)
-
-    @torch.no_grad()
-    def apply_to(self, model):
-        """Swap EMA weights into model. Returns backup dict for restore()."""
-        backup = {}
-        sd = model.state_dict()
-        for k, v in self.shadow.items():
-            if k in sd and sd[k].shape == v.shape:
-                backup[k] = sd[k].clone()
-                sd[k].copy_(v)
-        return backup
-
-    @torch.no_grad()
-    def restore(self, model, backup):
-        """Restore original weights from backup dict."""
-        sd = model.state_dict()
-        for k, v in backup.items():
-            if k in sd:
-                sd[k].copy_(v)
-
-    def state_dict(self):
-        return self.shadow
-
-    def load_state_dict(self, sd):
-        for k in list(self.shadow.keys()):
-            if k in sd and sd[k].shape == self.shadow[k].shape:
-                self.shadow[k].copy_(sd[k])
-
-
-# ── Projection Discriminator (Stage 2 only, kept for future use) ── #
-
-class LatentProjectionDiscriminator(nn.Module):
-    """3D PatchGAN with projection conditioning."""
-
-    def __init__(self, in_channels=4, num_classes=NUM_CLASSES, base_ch=64,
-                 use_spectral_norm=False):
-        super().__init__()
-        self.class_emb = nn.Embedding(num_classes, base_ch * 4)
-
-        def _sn(layer):
-            return nn.utils.spectral_norm(layer) if use_spectral_norm else layer
-
-        self.conv1 = nn.Sequential(
-            _sn(nn.Conv3d(in_channels, base_ch, 4, stride=2, padding=1)),
-            nn.LeakyReLU(0.2, inplace=True),
-        )
-        self.conv2 = nn.Sequential(
-            _sn(nn.Conv3d(base_ch, base_ch * 2, 4, stride=2, padding=1)),
-            nn.InstanceNorm3d(base_ch * 2),
-            nn.LeakyReLU(0.2, inplace=True),
-        )
-        self.conv3 = nn.Sequential(
-            _sn(nn.Conv3d(base_ch * 2, base_ch * 4, 4, stride=2, padding=1)),
-            nn.InstanceNorm3d(base_ch * 4),
-            nn.LeakyReLU(0.2, inplace=True),
-        )
-        self.head = _sn(nn.Conv3d(base_ch * 4, 1, 4, padding=1))
-
-    def forward(self, z, class_label):
-        f1 = self.conv1(z)
-        f2 = self.conv2(f1)
-        f3 = self.conv3(f2)
-        patch_logits = self.head(f3)
-        feat_pooled = f3.mean(dim=[2, 3, 4])
-        class_vec = self.class_emb(class_label)
-        proj_logits = (feat_pooled * class_vec).sum(dim=1, keepdim=True)
-        return patch_logits, proj_logits, [f1, f2, f3]
-
-    def full_logits(self, z, class_label):
-        patch, proj, _ = self.forward(z, class_label)
-        return patch + proj.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
-
-
-def lsgan_d_loss(real_logits, fake_logits):
-    real_target = torch.ones_like(real_logits)
-    fake_target = torch.zeros_like(fake_logits)
-    return 0.5 * (F.mse_loss(real_logits, real_target) +
-                  F.mse_loss(fake_logits, fake_target))
-
-
-def lsgan_g_loss(fake_logits):
-    return F.mse_loss(fake_logits, torch.ones_like(fake_logits))
 
 
 def _grad_norm(parameters):
@@ -168,18 +60,14 @@ def run(args):
     with open(args.config) as f:
         cfg = yaml.safe_load(f)
 
-    # ── Distributed setup ── #
-    if args.dist:
-        rank = int(os.environ.get("RANK", 0))
-        world_size = int(os.environ.get("WORLD_SIZE", 1))
-        local_rank = int(os.environ.get("LOCAL_RANK", 0))
-        torch.cuda.set_device(local_rank)
-        dist.init_process_group("nccl")
-    else:
-        rank, world_size, local_rank = 0, 1, 0
-
+    rank, world_size, local_rank, device = setup_distributed(args.dist, args.device)
     is_main = rank == 0
-    device = torch.device(f"cuda:{local_rank}" if torch.cuda.is_available() else "cpu")
+    import random
+    seed = int(cfg.get("train", {}).get("seed", 2026))
+    random.seed(seed + rank)
+    np.random.seed(seed + rank)
+    torch.manual_seed(seed + rank)
+    loader_generator = torch.Generator().manual_seed(seed + rank)
     amp_dtype = getattr(torch, cfg.get("train", {}).get("mixed_precision", "bfloat16"))
 
     data_cfg = cfg["data"]
@@ -232,7 +120,8 @@ def run(args):
     if is_main:
         output_dir.mkdir(parents=True, exist_ok=True)
         from fieldrf.utils.visualization import archive_metrics_csvs
-        archive_metrics_csvs(output_dir / "vis")
+        if not args.resume:
+            archive_metrics_csvs(output_dir / "vis")
 
     # ── Build bridge ── #
     resume_ckpt = args.resume
@@ -253,9 +142,9 @@ def run(args):
         num_class_embeds=NUM_CLASSES,
         feat4_channels=bridge_cfg.get("feat4_channels", 64),
         conditioning_embedding_num_channels=tuple(
-            bridge_cfg.get("controlnet", {}).get(
-                "conditioning_embedding_num_channels", [64, 64]
-            )
+            bridge_cfg.get("conditioning_embedding_num_channels",
+                           bridge_cfg.get("controlnet", {}).get(
+                               "conditioning_embedding_num_channels", [64, 64]))
         ),
         z_channels=4,
         num_train_timesteps=num_train_timesteps,
@@ -272,13 +161,8 @@ def run(args):
     )
 
     if args.dist:
-        # find_unused_parameters=False: identity RF Stage 1 has no dead parameters
-        # (unet + controlnet both used in forward). Setting True adds DDP graph
-        # traversal overhead with no benefit. Re-enable only if source-conditioned RF's z_src
-        # path introduces unused params.
-        bridge = DDP(bridge, device_ids=[local_rank], find_unused_parameters=False)
-
-    bridge_raw = bridge.module if args.dist else bridge
+        wrap_rf_submodules(bridge, device)
+    bridge_raw = bridge
     cfg["bridge"]["resblock_updown"] = bridge_raw.resblock_updown
     cfg["bridge"]["include_fc"] = bridge_raw.include_fc
 
@@ -307,7 +191,7 @@ def run(args):
         cross_modality=adv_cfg.get("cross_modality", True),
     )
 
-    sampler = DistributedSampler(train_ds, shuffle=True) if args.dist else None
+    sampler = DistributedSampler(train_ds, shuffle=True, seed=seed) if args.dist else None
     num_workers = train_cfg.get("num_workers", 4)
     loader = DataLoader(
         train_ds,
@@ -317,9 +201,13 @@ def run(args):
         num_workers=num_workers,
         pin_memory=True,
         drop_last=True,
-        prefetch_factor=train_cfg.get("prefetch_factor", 2),
-        persistent_workers=(num_workers > 0),
+        prefetch_factor=train_cfg.get("prefetch_factor", 2) if num_workers > 0 else None,
+        persistent_workers=False,
+        generator=loader_generator,
     )
+
+    if len(loader) == 0:
+        raise ValueError("RF training has no batches; reduce batch_size or provide more volumes")
 
     if is_main:
         print(f"Data: {len(train_ds)} samples | modalities={modalities} | fields={fields}")
@@ -363,6 +251,11 @@ def run(args):
         if is_main:
             print(f"scale_factor = {scale_factor:.6f} (from config, project-wide verified value)")
 
+    if args.dist:
+        shared_scale = torch.tensor(scale_factor, device=device, dtype=torch.float64)
+        dist.broadcast(shared_scale, src=0)
+        scale_factor = shared_scale.item()
+
     # Update bridge's scale_factor
     bridge_raw.scale_factor = scale_factor
 
@@ -387,7 +280,7 @@ def run(args):
             use_spectral_norm=disc_cfg.get("use_spectral_norm", False),
         ).to(device)
         if args.dist:
-            disc = DDP(disc, device_ids=[local_rank])
+            disc = wrap_module(disc, device)
         d_lr = adv_cfg.get("d_lr", train_cfg["lr"])
         opt_D = torch.optim.Adam(
             (disc.module if args.dist else disc).parameters(),
@@ -482,6 +375,8 @@ def run(args):
             print(f"[RF] Restored scale_factor={scale_factor:.6f} from checkpoint")
         if is_main:
             print(f"[RF] Resumed from {resume_ckpt} -> epoch {start_epoch}", flush=True)
+        if "rng_states" in sd:
+            restore_rank_state(sd["rng_states"], rank, world_size, device, loader_generator)
 
     # ── Training loop ── #
     t_start = time.time()
@@ -788,6 +683,7 @@ def run(args):
 
         # ── Epoch end ── #
 
+        synchronize()
         if is_main:
             dt = time.time() - t0
             cum = time.time() - t_start
@@ -811,9 +707,24 @@ def run(args):
                   f"{source_channel_norms(bridge_raw)}"
                   f"{controlnet_norms(bridge_raw)}", flush=True)
 
-            # ── Save checkpoint ── #
-            save_every = train_cfg.get("save_every", 10)
-            if (epoch + 1) % save_every == 0 or epoch == n_epochs - 1:
+            # ── Visualization ── #
+            vis_every = vis_cfg.get("vis_every", 10)
+            if vis_every > 0 and (epoch + 1) % vis_every == 0:
+                from fieldrf.visualization.pretrain import run_vis
+                if ema is not None:
+                    backup = ema.apply_to(bridge_raw)
+                    try:
+                        run_vis(bridge_raw, scale_factor, cfg, epoch, device)
+                    finally:
+                        ema.restore(bridge_raw, backup)
+                else:
+                    run_vis(bridge_raw, scale_factor, cfg, epoch, device)
+
+        synchronize()
+        save_every = train_cfg.get("save_every", 10)
+        if (epoch + 1) % save_every == 0 or epoch == n_epochs - 1:
+            rank_states = collect_rank_states(device, loader_generator)
+            if is_main:
                 ckpt_path = output_dir / f"fieldrf_epoch{epoch+1}.pt"
                 state = {
                     "bridge": bridge_raw.state_dict(),
@@ -832,11 +743,7 @@ def run(args):
                         "num_head_channels": tuple(bridge_cfg.get("num_head_channels", [0, 0, 32, 32])),
                         "norm_num_groups": bridge_cfg.get("norm_num_groups", 32),
                         "feat4_channels": bridge_cfg.get("feat4_channels", 64),
-                        "conditioning_embedding_num_channels": tuple(
-                            bridge_cfg.get("controlnet", {}).get(
-                                "conditioning_embedding_num_channels", [64, 64]
-                            )
-                        ),
+                        "conditioning_embedding_num_channels": bridge_raw.conditioning_embedding_num_channels,
                         "use_flash_attention": bridge_cfg.get(
                             "use_flash_attention", True
                         ),
@@ -853,21 +760,11 @@ def run(args):
                 if disc is not None:
                     state["disc"] = (disc.module if args.dist else disc).state_dict()
                     state["opt_D"] = opt_D.state_dict()
-                torch.save(state, ckpt_path)
+                state["rng_states"] = rank_states
+                atomic_save(state, ckpt_path)
                 print(f"  Saved: {ckpt_path}", flush=True)
 
-            # ── Visualization ── #
-            vis_every = vis_cfg.get("vis_every", 10)
-            if (epoch + 1) % vis_every == 0:
-                from fieldrf.visualization.pretrain import run_vis
-                if ema is not None:
-                    backup = ema.apply_to(bridge_raw)
-                    try:
-                        run_vis(bridge_raw, scale_factor, cfg, epoch, device)
-                    finally:
-                        ema.restore(bridge_raw, backup)
-                else:
-                    run_vis(bridge_raw, scale_factor, cfg, epoch, device)
+        synchronize()
 
     if args.dist:
         dist.destroy_process_group()

@@ -14,7 +14,12 @@ def main():
                         help="Override config train.n_epochs (for smoke testing)")
     parser.add_argument("--max_volumes", type=int, default=0,
                         help="Max volumes per field (0=all, for smoke testing)")
+    parser.add_argument("--device", choices=["cpu", "cuda"], default=None)
     args = parser.parse_args()
 
     from fieldrf.training.pretrain import run
-    run(args)
+    from fieldrf.training.distributed import teardown_distributed
+    try:
+        run(args)
+    finally:
+        teardown_distributed()

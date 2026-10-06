@@ -8,14 +8,13 @@ def controlnet_norms(bridge):
     """
     cn = bridge.controlnet
     parts = []
-    for k in range(4):
-        idx_start = k * 3
+    for k, idx_start in enumerate(range(0, len(cn.controlnet_down_blocks), 3)):
         ns = []
-        for j in range(3):
+        for j in range(min(3, len(cn.controlnet_down_blocks) - idx_start)):
             block = cn.controlnet_down_blocks[idx_start + j]
             w = block.conv.weight if hasattr(block, 'conv') else block.weight
             ns.append(w.norm().item())
-        parts.append(f"s{k}=[{ns[0]:.3f},{ns[1]:.3f},{ns[2]:.3f}]")
+        parts.append(f"s{k}=[{','.join(f'{value:.3f}' for value in ns)}]")
     mid_w = cn.controlnet_mid_block.conv.weight if hasattr(cn.controlnet_mid_block, 'conv') else cn.controlnet_mid_block.weight
     parts.append(f"mid=[{mid_w.norm().item():.3f}]")
     return " cn=" + " ".join(parts)

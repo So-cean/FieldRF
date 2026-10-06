@@ -10,12 +10,10 @@ the RF U-Net, ControlNet, and endpoint aligner are all learnable.
 
 from __future__ import annotations
 
-import argparse
 import csv
 import math
 import os
 import random
-import sys
 import time
 from pathlib import Path
 
@@ -42,48 +40,7 @@ from fieldrf.models.endpoint_aligner import EndpointAligner  # noqa: E402
 from fieldrf.utils.visualization import archive_metrics_csvs  # noqa: E402
 
 
-class EMA:
-    """Floating-point exponential moving average for checkpoint selection."""
-
-    def __init__(self, model, decay):
-        self.decay = float(decay)
-        self.shadow = {
-            key: value.detach().clone()
-            for key, value in model.state_dict().items()
-            if value.dtype.is_floating_point
-        }
-
-    @torch.no_grad()
-    def update(self, model):
-        for key, value in model.state_dict().items():
-            if key in self.shadow:
-                self.shadow[key].mul_(self.decay).add_(
-                    value.detach(), alpha=1.0 - self.decay
-                )
-
-    @torch.no_grad()
-    def apply_to(self, model):
-        backup = {}
-        state = model.state_dict()
-        for key, value in self.shadow.items():
-            if key in state and state[key].shape == value.shape:
-                backup[key] = state[key].detach().clone()
-                state[key].copy_(value)
-        return backup
-
-    @torch.no_grad()
-    def restore(self, model, backup):
-        state = model.state_dict()
-        for key, value in backup.items():
-            state[key].copy_(value)
-
-    def state_dict(self):
-        return self.shadow
-
-    def load_state_dict(self, state):
-        for key in self.shadow:
-            if key in state and state[key].shape == self.shadow[key].shape:
-                self.shadow[key].copy_(state[key])
+from fieldrf.training.ema import EMA
 
 
 def _resolve(path):

@@ -8,11 +8,8 @@ CORAL; no sample-wise endpoint, image, cycle, or synthetic-pair loss is used.
 
 from __future__ import annotations
 
-import argparse
 import csv
 import math
-import os
-import sys
 import time
 from pathlib import Path
 
@@ -20,7 +17,6 @@ import torch
 import torch.distributed as dist
 import torch.nn.functional as F
 import yaml
-from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 
@@ -30,7 +26,6 @@ from fieldrf.models.model import FieldRFModel  # noqa: E402
 from fieldrf.utils.domains import NUM_CLASSES  # noqa: E402
 from fieldrf.models.endpoint_aligner import EndpointAligner
 from fieldrf.utils.endpoint_alignment import multiscale_patch_coral
-
 
 
 def spatial_delta_loss(delta):
@@ -97,17 +92,9 @@ def run(args):
     with open(args.config) as handle:
         cfg = yaml.safe_load(handle)
 
-    if args.dist:
-        rank = int(os.environ.get("RANK", 0))
-        local_rank = int(os.environ.get("LOCAL_RANK", 0))
-        torch.cuda.set_device(local_rank)
-        dist.init_process_group("nccl")
-    else:
-        rank, local_rank = 0, 0
+    from fieldrf.training.distributed import setup_distributed, wrap_module
+    rank, world_size, local_rank, device = setup_distributed(args.dist, args.device)
     is_main = rank == 0
-    device = torch.device(
-        f"cuda:{local_rank}" if torch.cuda.is_available() else "cpu"
-    )
 
     data_cfg = cfg["data"]
     align_cfg = cfg["unpaired_alignment"]
@@ -155,7 +142,7 @@ def run(args):
         num_blocks=model_cfg.get("num_blocks", 2),
     ).to(device)
     if args.dist:
-        aligner = DDP(aligner, device_ids=[local_rank])
+        aligner = wrap_module(aligner, device)
     aligner_raw = aligner.module if args.dist else aligner
 
     output_dir = Path(

@@ -156,7 +156,13 @@ class FieldRFModel(nn.Module):
         # direct path near t=0 reduces source-field appearance leakage.
         gate = (t / self.num_train_timesteps).clamp(0, 1)
         gate = gate.view(-1, 1, 1, 1, 1).to(dtype=z_t.dtype)
-        return self.source_adapter(z_src.to(dtype=z_t.dtype)) * gate
+        return self._predictor("source_adapter")(z_src.to(dtype=z_t.dtype)) * gate
+
+    def _predictor(self, name):
+        """Use DDP forward for training; keep raw state and no-grad evaluation."""
+        if self.training and torch.is_grad_enabled():
+            return getattr(self, "_ddp_predictors", {}).get(name, getattr(self, name))
+        return getattr(self, name)
 
     def forward(self, z_t, t, class_label, feats, z_src=None):
         """Predict velocity v from (z_t, t, feats).
@@ -187,13 +193,13 @@ class FieldRFModel(nn.Module):
             )
 
         # ControlNet: z_t as main input, feat4 as conditioning
-        down_res, mid_res = self.controlnet(
+        down_res, mid_res = self._predictor("controlnet")(
             z_t, timesteps=t,
             controlnet_cond=feat4, class_labels=class_label,
         )
 
         # UNet forward: predict velocity
-        return self.unet(
+        return self._predictor("unet")(
             self._unet_input(z_t, z_src), timesteps=t,
             class_labels=class_label,
             spacing_tensor=self.spacing_tensor.expand(B, -1),
