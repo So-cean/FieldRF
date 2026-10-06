@@ -5,7 +5,7 @@
 Anatomy-conditioned 3D rectified flow for cross-field MRI harmonization, with one
 shared model for **T1W, T2W, T2FLAIR** and **0.1T, 1.5T, 3T, 5T, 7T**.
 
-![FieldRF pipeline: unpaired training, paired fine-tuning and cross-field inference](assets/fieldrf_pipeline.png)
+![FieldRF pipeline: unpaired training, paired fine-tuning and cross-field inference](assets/fieldrf_pipeline.svg)
 
 [Method and code layout](FieldRF/README.md) · [Baselines](Baseline/README.md) ·
 [Evaluation](Evaluation/README.md) · [Submission](Submission/README.md) ·
