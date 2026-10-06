@@ -14,26 +14,19 @@ Modes (--feats):
   all      : cache feat0-4 (default, for RF multi-scale injection)
   0,1,2,3,4: cache specific levels (comma-separated, e.g. "3,4")
 
-feat4_pool:
-  1 = keep feat4 at native 192^3 (64ch, 906 MB/subject)
-  2 = avg_pool3d to 96^3 (64ch, 113 MB — 8x savings)
-  RF only uses feat4 via source_proj which operates at 96^3,
-  so pool=2 loses nothing and preserves field-invariance (avg_pool is
-  field-agnostic, unlike a random-init stride-2 conv).
-
-GPU utilization fixes:
-  - num_workers default 8 (was 4): more parallel data loaders
-  - prefetch_factor 4 (was 2): deeper queue
-  - non_blocking=True transfer (pin_memory + async H2D)
-  - torch.compile on get_feature
-  - async save pipeline (ThreadPoolExecutor, save overlaps GPU forward)
+Feature geometry:
+  Native feat4 is 192 cubed, while MAISI latents are 96 cubed.
+  A two-level ControlNet conditioning pyramid needs unpooled feat4 (pool=1).
+  A single-level pyramid needs pooled feat4 (pool=2).
+  The default is derived from the bridge configuration; incompatible overrides
+  fail before cache generation.
 
 Usage:
   python scripts/cache_brainid_feat.py \\
       --config configs/pretrain.yaml \\
       --split Training_retrospective \\
       --fields 0.1T 1.5T 3T \\
-      --feats all --feat4_pool 2 \\
+      --feats 4 \\
       --num_workers 8 --save_workers 2 --blosc2_threads 2
 """
 import sys
@@ -50,12 +43,25 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
 BRAINID_ROOT = Path(os.environ.get("BRAINID_ROOT", str(Path(__file__).resolve().parents[2] / "third_party" / "Brain-ID")))
-sys.path.insert(0, str(BRAINID_ROOT))
-from BrainID.models import build_feat_model
-from utils.checkpoint import load_checkpoint
-import utils.misc as brainid_utils
-
+_FIELDRF = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(_FIELDRF))
 from data.volume_dataset import VolumeDataset
+
+
+def _resolve_feat4_pool(cfg, requested=None):
+    """Match native 192-cubed Brain-ID features to 96-cubed MAISI latents."""
+    bridge = cfg.get("bridge", {})
+    channels = bridge.get("conditioning_embedding_num_channels")
+    if channels is None:
+        channels = bridge.get("controlnet", {}).get("conditioning_embedding_num_channels", [64, 64])
+    factor = 2 ** (len(channels) - 1)
+    pool = requested if requested is not None else 2 // factor
+    if pool not in {1, 2} or pool * factor != 2:
+        raise ValueError(
+            f"feat4_pool={pool} is incompatible with conditioning pyramid {channels}: "
+            "192 / feat4_pool / conditioning_downsample must equal latent size 96"
+        )
+    return pool
 
 
 # ── GPU forward ── #
@@ -290,9 +296,8 @@ def main():
     parser.add_argument("--feats", default="all",
                         help="Features to cache: 'all' (feat0-4) or comma-separated "
                              "levels (e.g. '3,4'). Default: all")
-    parser.add_argument("--feat4_pool", type=int, default=2, choices=[1, 2],
-                        help="feat4 pooling: 1=keep 192^3 (906 MB), 2=avg_pool to 96^3 "
-                             "(113 MB, 8x savings). Default: 2")
+    parser.add_argument("--feat4_pool", type=int, default=None, choices=[1, 2],
+                        help="feat4 pooling: 1=192^3, 2=96^3; default matches the configured ControlNet pyramid")
     parser.add_argument("--num_workers", type=int, default=8,
                         help="DataLoader num_workers (default 8 for GPU utilization)")
     parser.add_argument("--prefetch_factor", type=int, default=4,
@@ -319,7 +324,8 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     data_cfg = cfg["data"]
     split = args.split or data_cfg.get("split", "Training_retrospective")
-    modality = args.modality or data_cfg.get("modality", "T1W")
+    modalities = [args.modality] if args.modality else data_cfg.get("modalities", [data_cfg.get("modality", "T1W")])
+    args.feat4_pool = _resolve_feat4_pool(cfg, args.feat4_pool)
     fields = args.fields or data_cfg.get("fields", [])
     if not fields:
         raise ValueError("No fields specified (config.fields or --fields)")
@@ -332,6 +338,18 @@ def main():
     print(f"Config: feats={feat_indices}, feat4_pool={args.feat4_pool}, "
           f"num_workers={args.num_workers}, prefetch={args.prefetch_factor}")
 
+    brainid_checkpoint = cfg.get("brainid", {}).get("ckpt_path")
+    if not brainid_checkpoint or not Path(brainid_checkpoint).is_file():
+        raise FileNotFoundError("Set brainid.ckpt_path to the downloaded Brain-ID checkpoint")
+    if not (BRAINID_ROOT / "BrainID").is_dir():
+        raise FileNotFoundError("Set BRAINID_ROOT to a checkout of https://github.com/jhuldr/Brain-ID")
+    # Import upstream utilities only during execution, so --help and native
+    # cache serialization do not require an external Brain-ID installation.
+    sys.path.insert(0, str(BRAINID_ROOT))
+    from BrainID.models import build_feat_model
+    from utils.checkpoint import load_checkpoint
+    import utils.misc as brainid_utils
+
     # ── Brain-ID model ──
     print("Loading Brain-ID...")
     bd_cfg = BRAINID_ROOT / "cfgs"
@@ -341,7 +359,7 @@ def main():
         str(bd_cfg / "submit.yaml"),
     ])
     _, model, _, _, _ = build_feat_model(a, device=str(device))
-    load_checkpoint(cfg["brainid"]["ckpt_path"], [model], None, ["model"], to_print=False)
+    load_checkpoint(brainid_checkpoint, [model], None, ["model"], to_print=False)
     model.eval()
 
     # torch.compile for speedup
@@ -360,40 +378,41 @@ def main():
         print(f"  torch.compile skipped ({e})")
         print("Brain-ID loaded (no compile).")
 
-    # ── Output root (cache name from config, used verbatim) ──
-    # The config's feat_cache_name should reflect the pooling (e.g.
-    # brainid_feat_all_pool2 when feat4_pool=2). The script uses it as-is.
-    cache_name = data_cfg.get("feat_cache_name", "brainid_feat_all")
-    feat_root = Path(data_cfg["cache_root"]) / split / cache_name / modality
-    feat_root.mkdir(parents=True, exist_ok=True)
-    print(f"Output: {feat_root}")
+    for modality in modalities:
+        # ── Output root (cache name from config, used verbatim) ──
+        # The config's feat_cache_name should reflect the pooling (e.g.
+        # brainid_feat_all_pool2 when feat4_pool=2). The script uses it as-is.
+        cache_name = data_cfg.get("feat_cache_name", "brainid_feat")
+        feat_root = Path(data_cfg["cache_root"]) / split / cache_name / modality
+        feat_root.mkdir(parents=True, exist_ok=True)
+        print(f"Output: {feat_root}")
 
-    # ── DataLoader kwargs (GPU utilization: more workers + deeper prefetch) ──
-    loader_kwargs = dict(batch_size=1, shuffle=False, num_workers=args.num_workers)
-    if args.num_workers > 0:
-        loader_kwargs["pin_memory"] = True
-        loader_kwargs["prefetch_factor"] = args.prefetch_factor
+        # ── DataLoader kwargs (GPU utilization: more workers + deeper prefetch) ──
+        loader_kwargs = dict(batch_size=1, shuffle=False, num_workers=args.num_workers)
+        if args.num_workers > 0:
+            loader_kwargs["pin_memory"] = True
+            loader_kwargs["prefetch_factor"] = args.prefetch_factor
 
-    for field_val in fields:
-        field_dir = feat_root / str(field_val)
-        field_dir.mkdir(parents=True, exist_ok=True)
+        for field_val in fields:
+            field_dir = feat_root / str(field_val)
+            field_dir.mkdir(parents=True, exist_ok=True)
 
-        ds = VolumeDataset(
-            data_cfg["data_root"], split,
-            modality, str(field_val),
-        )
-        print(f"\n[{field_val}] {len(ds)} vols -> {field_dir}")
+            ds = VolumeDataset(
+                data_cfg["data_root"], split,
+                modality, str(field_val),
+            )
+            print(f"\n[{field_val}] {len(ds)} vols -> {field_dir}")
 
-        n_saved, n_skipped, n_errors, elapsed, rate = _run_field(
-            field_val, field_dir, ds, model, device,
-            loader_kwargs, feat_indices, args.feat4_pool,
-            args.blosc2_threads, args.save_workers, args.max_volumes,
-            overwrite=args.overwrite,
-        )
-        print(f"  Done: {n_saved}/{len(ds)} (skipped {n_skipped}, "
-              f"errors {n_errors}) in {elapsed:.0f}s @ {rate:.2f} vol/s")
+            n_saved, n_skipped, n_errors, elapsed, rate = _run_field(
+                field_val, field_dir, ds, model, device,
+                loader_kwargs, feat_indices, args.feat4_pool,
+                args.blosc2_threads, args.save_workers, args.max_volumes,
+                overwrite=args.overwrite,
+            )
+            print(f"  Done: {n_saved}/{len(ds)} (skipped {n_skipped}, "
+                  f"errors {n_errors}) in {elapsed:.0f}s @ {rate:.2f} vol/s")
 
-    print("Done.")
+        print("Done.")
 
 
 if __name__ == "__main__":

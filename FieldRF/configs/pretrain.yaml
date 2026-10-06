@@ -20,6 +20,9 @@ data:
   cache_root: /path/to/fieldrf_cache
   feat_cache_name: brainid_feat  # b2nd format cache
 
+brainid:
+  ckpt_path: /path/to/pretrained/brain_id_pretrained.pth
+
 vae:
   type: maisi
   latent_channels: 4

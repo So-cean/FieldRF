@@ -78,8 +78,12 @@ paths under `/path/to/` must be replaced. Run the commands below from `FieldRF/`
 | Inference | `scripts/inference.py` | checkpoint and configured inference paths |
 
 ```bash
-PYTHONPATH=. python scripts/cache_latents.py --config configs/pretrain.yaml
-PYTHONPATH=. python scripts/cache_brainid_feat.py --config configs/pretrain.yaml
+# Cache all configured modalities/fields for training and inference.
+# Set BRAINID_ROOT and brainid.ckpt_path before feature generation.
+for split in Training_retrospective Training_prospective Validating_prospective; do
+  python scripts/cache_latents.py --config configs/pretrain.yaml --split "$split"
+  python scripts/cache_brainid_feat.py --config configs/pretrain.yaml --split "$split" --feats 4
+done
 python scripts/train.py --config configs/pretrain.yaml
 python scripts/train_endpoint_aligner.py --config configs/endpoint_alignment.yaml
 python scripts/finetune_vae.py --config configs/vae_finetune.yaml
@@ -120,10 +124,11 @@ explicit paths, and parameter layouts and state-dict keys are preserved.
 
 ## CPU regression tests
 
-The committed suite contains 24 tests in five files:
+The committed suite contains 27 tests in six files:
 
 | File | Tests | Coverage |
 |---|---:|---|
+| [test_cache_pipeline.py](tests/test_cache_pipeline.py) | 3 | Cache entry points, feature geometry and native cache → real RF training → checkpoint reload → sampling |
 | [test_alignment.py](tests/test_alignment.py) | 8 | Unpaired reference sampling, endpoint losses, RF paths and truncated inversion |
 | [test_paired_dataset.py](tests/test_paired_dataset.py) | 3 | Same-subject/modality pairing, domain completeness and cross-field record counts |
 | [test_spatial_loss.py](tests/test_spatial_loss.py) | 3 | Fractional evaluation-slab weights and weighted L1 supervision |
@@ -141,3 +146,14 @@ Tests use synthetic tensors, small networks and temporary cache/checkpoint
 files. They run on CPU without MRI data, a Brain-ID checkout or trained FieldRF
 weights. Full experiment reproduction follows the pipeline above and requires
 the external data, caches and pretrained weights listed under dependencies.
+
+Both cache generators use all `data.modalities` by default; `--modality` selects
+one. Set `brainid.ckpt_path` in `configs/pretrain.yaml` and `BRAINID_ROOT` to the
+[Brain-ID checkout](https://github.com/jhuldr/Brain-ID). Feature pooling is derived
+from the ControlNet conditioning pyramid: `[64,64]` requires native 192-cubed
+feat4 (`pool=1`) for 96-cubed latents; `[64]` requires `pool=2`. Incompatible
+pooling overrides are rejected before generating caches. Existing pooled caches
+must match the selected model geometry.
+
+See [project citations](../REFERENCES.md), [tested environment](../REPRODUCIBILITY.md)
+and [MAISI brain-MRI model downloads](https://huggingface.co/nvidia/NV-Generate-MR-Brain).

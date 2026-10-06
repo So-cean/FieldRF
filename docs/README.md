@@ -41,12 +41,15 @@ python -m pip install -r requirements.txt
 python -m pytest -q FieldRF/tests
 ```
 
-The suite contains 24 tests in five files, covering data pairing, RF/alignment
+The FieldRF suite contains 27 tests in six files, covering data pairing, RF/alignment
 losses, spatial supervision, numerical integration/autograd and checkpoint/EMA
 loading. It uses synthetic tensors, small networks and temporary cache/weight
 files. No MRI dataset, Brain-ID checkout or released model checkpoint is needed.
 See the [test inventory](../FieldRF/README.md#cpu-regression-tests) and
 [test sources](../FieldRF/tests/).
+Run `python -m pytest -q FieldRF/tests mrix2026-cli/tests` to include the two
+submission ZIP regression tests. See the [independent-checkout audit](../REPRODUCIBILITY.md)
+for the actual tested versions and verification scope.
 
 ## Data and checkpoints
 
@@ -57,6 +60,7 @@ trained model binaries. Replace `/path/to/` placeholders before running.
 For FieldRF, configure `data.data_root`, `data.cache_root`, `vae.checkpoint`,
 `bridge.ckpt_path` and adaptation checkpoint paths as applicable.
 Set `BRAINID_ROOT` to the external Brain-ID checkout.
+Set `brainid.ckpt_path` in the pretraining configuration before feature caching.
 For baselines, configure `.env` from `.env.example`, plus any cache or auxiliary
 checkpoint paths specified by the selected YAML.
 
@@ -75,3 +79,4 @@ Follow [FieldRF](../FieldRF/README.md) for the shared RF reproduction pipeline
 or [Baseline](../Baseline/README.md) for comparison methods.
 Use [Evaluation](../Evaluation/README.md) for reference metrics and
 [Submission](../Submission/README.md) for validation packaging.
+Original projects and citation instructions are listed in [REFERENCES.md](../REFERENCES.md).

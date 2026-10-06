@@ -29,16 +29,17 @@ follow the [baseline guide](Baseline/README.md).
 
 ## Tests and experiment reproduction
 
-The [committed CPU test suite](FieldRF/tests/) contains 24 tests across five
+The [committed CPU test suite](FieldRF/tests/) contains 27 tests across six
 files. Install its dependencies and run it from the repository root:
 
 ```bash
 python -m pip install -r requirements.txt
-python -m pytest -q FieldRF/tests
+python -m pytest -q FieldRF/tests mrix2026-cli/tests
 ```
 
-The tests cover data pairing, RF/spatial losses, sampling/autograd and
-checkpoint/EMA loading with synthetic fixtures and small networks. See the
+Two additional CLI tests check submission ZIP layout. The tests cover data
+pairing, RF/spatial losses, sampling/autograd, cache generation and a real MONAI
+network's training/checkpoint round trip with synthetic fixtures. See the
 [test inventory](FieldRF/README.md#cpu-regression-tests). Full experiment
 reproduction follows the [method guide](FieldRF/README.md).
 
@@ -49,6 +50,18 @@ Inference uses no test-time augmentation by default.
 
 See [the method guide](FieldRF/README.md) for the pipeline and
 [reference evaluation](Evaluation/README.md) for metric definitions.
+
+## Acknowledgements and citations
+
+The benchmark, baseline and evaluation framework originates from
+[MRIxFields/MRIxFields2026](https://github.com/MRIxFields/MRIxFields2026).
+FieldRF uses [MONAI](https://github.com/Project-MONAI/MONAI),
+[Brain-ID](https://github.com/jhuldr/Brain-ID) and
+[MAISI / MAISI-v2](https://github.com/NVIDIA-Medtech/NV-Generate-CTMR).
+Please cite the corresponding original works listed in [REFERENCES.md](REFERENCES.md).
+
+The [reproducibility check](REPRODUCIBILITY.md) records the tested environment,
+verification scope and external artifacts needed for full experiments.
 
 ## License
 

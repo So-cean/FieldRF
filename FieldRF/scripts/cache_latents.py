@@ -15,6 +15,8 @@ from pathlib import Path
 import torch
 import yaml
 from monai.apps.generation.maisi.networks.autoencoderkl_maisi import AutoencoderKlMaisi
+_FIELDRF = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(_FIELDRF))
 from data.volume_dataset import VolumeDataset
 
 
@@ -47,6 +49,7 @@ def main():
     parser.add_argument("--config", required=True)
     parser.add_argument("--vae_checkpoint", default=None)
     parser.add_argument("--split", default=None, help="Override data.split (e.g. Training_prospective)")
+    parser.add_argument("--modality", default=None, help="Cache one modality instead of all configured modalities")
     args = parser.parse_args()
 
     # Resolve config path relative to FieldRF/ dir
@@ -69,60 +72,62 @@ def main():
     latent_ch = vae_cfg["latent_channels"]
     print(f"MAISI VAE ({latent_ch}ch), direct encode: 384³ → ({latent_ch},96,96,96)")
 
-    # ── Cache per field ──
-    latent_root = Path(data_cfg["cache_root"]) / split / "latent" / data_cfg["modality"]
-    fields = data_cfg.get("fields", [data_cfg.get("source_field"), data_cfg.get("target_field")])
+    modalities = [args.modality] if args.modality else data_cfg.get("modalities", [data_cfg.get("modality", "T1W")])
+    for modality in modalities:
+        # ── Cache per field ──
+        latent_root = Path(data_cfg["cache_root"]) / split / "latent" / modality
+        fields = data_cfg.get("fields", [data_cfg.get("source_field"), data_cfg.get("target_field")])
 
-    for field_val in fields:
-        field_dir = latent_root / str(field_val)
-        field_dir.mkdir(parents=True, exist_ok=True)
+        for field_val in fields:
+            field_dir = latent_root / str(field_val)
+            field_dir.mkdir(parents=True, exist_ok=True)
 
-        ds = VolumeDataset(data_cfg["data_root"], split,
-                             data_cfg["modality"], str(field_val))
-        from torch.utils.data import DataLoader
-        loader = DataLoader(ds, batch_size=1, shuffle=False, num_workers=0, pin_memory=True)
-        print(f"\n[{field_val}] {len(ds)} vols → {field_dir}")
+            ds = VolumeDataset(data_cfg["data_root"], split,
+                                 modality, str(field_val))
+            from torch.utils.data import DataLoader
+            loader = DataLoader(ds, batch_size=1, shuffle=False, num_workers=0, pin_memory=True)
+            print(f"\n[{field_val}] {len(ds)} vols → {field_dir}")
 
-        saved, t0 = 0, time.time()
-        for batch in loader:
-            img = batch["image"].to(device)
-            fn = batch["filename"][0]
-            pt_path = field_dir / f"{fn.replace('.nii.gz', '')}.pt"
-            if pt_path.exists():
+            saved, t0 = 0, time.time()
+            for batch in loader:
+                img = batch["image"].to(device)
+                fn = batch["filename"][0]
+                pt_path = field_dir / f"{fn.replace('.nii.gz', '')}.pt"
+                if pt_path.exists():
+                    saved += 1
+                    continue
+
+                with torch.no_grad():
+                    with torch.amp.autocast("cuda", enabled=True, dtype=amp_dtype):
+                        z_out = ae.encode(img)
+                        z = z_out[0] if isinstance(z_out, tuple) else z_out
+
+                torch.save({"latent": z[0].detach().cpu().float(),
+                            "field_strength": batch["field_strength"][0],
+                            "modality": batch["modality"][0]}, pt_path)
                 saved += 1
-                continue
+                if saved % 10 == 0:
+                    print(f"  {saved}/{len(ds)} ({(time.time()-t0):.0f}s)")
 
-            with torch.no_grad():
-                with torch.amp.autocast("cuda", enabled=True, dtype=amp_dtype):
-                    z_out = ae.encode(img)
-                    z = z_out[0] if isinstance(z_out, tuple) else z_out
+        print(f"Done. Latents saved to {latent_root}")
 
-            torch.save({"latent": z[0].detach().cpu().float(),
-                        "field_strength": batch["field_strength"][0],
-                        "modality": batch["modality"][0]}, pt_path)
-            saved += 1
-            if saved % 10 == 0:
-                print(f"  {saved}/{len(ds)} ({(time.time()-t0):.0f}s)")
-
-    print(f"Done. Latents saved to {latent_root}")
-
-    # ── Compute scale_factor ──
-    all_pts = sorted(latent_root.rglob("*.pt"))
-    if all_pts:
-        sm = sv = sn = 0.0
-        for f in all_pts:
-            d = torch.load(f, map_location="cpu", weights_only=False)
-            z = d["latent"].float().flatten()
-            m, v, n = z.mean(), z.var(unbiased=False), z.numel()
-            delta = m - sm
-            sv += v * n + delta * delta * sn * n / (sn + n)
-            sm = (sm * sn + m * n) / (sn + n)
-            sn += n
-        scale = 1.0 / (sv / sn).sqrt().clamp(min=1e-8)
-        import json
-        with open(latent_root / "meta.json", "w") as f:
-            json.dump({"scale_factor": scale.item(), "n_voxels": int(sn), "n_files": len(all_pts)}, f)
-        print(f"  scale_factor (manual ref): {scale.item():.4f}  → {latent_root}/meta.json")
+        # ── Compute scale_factor ──
+        all_pts = sorted(latent_root.rglob("*.pt"))
+        if all_pts:
+            sm = sv = sn = 0.0
+            for f in all_pts:
+                d = torch.load(f, map_location="cpu", weights_only=False)
+                z = d["latent"].float().flatten()
+                m, v, n = z.mean(), z.var(unbiased=False), z.numel()
+                delta = m - sm
+                sv += v * n + delta * delta * sn * n / (sn + n)
+                sm = (sm * sn + m * n) / (sn + n)
+                sn += n
+            scale = 1.0 / (sv / sn).sqrt().clamp(min=1e-8)
+            import json
+            with open(latent_root / "meta.json", "w") as f:
+                json.dump({"scale_factor": scale.item(), "n_voxels": int(sn), "n_files": len(all_pts)}, f)
+            print(f"  scale_factor (manual ref): {scale.item():.4f}  → {latent_root}/meta.json")
 
 
 if __name__ == "__main__":

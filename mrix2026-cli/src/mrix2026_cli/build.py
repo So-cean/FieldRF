@@ -142,5 +142,5 @@ def run_build(predictions_dir: str, predictions_seg_dir: str, output_dir: str,
         for w in all_warnings:
             print(f"  {w}")
     if not dry_run:
-        print(f"\nNext step:\n  cd {out_root} && zip -r ~/task1.zip task1")
+        print(f"\nNext step:\n  mrix2026 zip --submission-dir {out_root} --output-dir /path/to/zips --tasks {tasks_str}")
     return 0
