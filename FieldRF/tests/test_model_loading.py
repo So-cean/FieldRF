@@ -97,6 +97,32 @@ class ModelLoadingTests(unittest.TestCase):
                 torch.testing.assert_close(loaded.unet.state_dict()[name], value)
         self.assertEqual(loaded.unet.class_embedding.weight.shape[0], 15)
 
+    def test_residual_sampling_pretrained_weights_load_and_continue(self):
+        residual_model = FieldRFModel(**MODEL_OPTIONS, resblock_updown=True)
+        loaded = self.load({"unet_state_dict": residual_model.unet.state_dict()})
+        self.assertTrue(loaded.resblock_updown)
+        for name, value in residual_model.unet.state_dict().items():
+            if name != "class_embedding.weight":
+                torch.testing.assert_close(loaded.unet.state_dict()[name], value, rtol=0, atol=0)
+        continued = self.load({"bridge": loaded.state_dict()})
+        self.assertTrue(continued.resblock_updown)
+        for name, value in loaded.state_dict().items():
+            torch.testing.assert_close(continued.state_dict()[name], value, rtol=0, atol=0)
+
+    def test_raw_pretrained_rejects_incomplete_weights(self):
+        state = dict(self.model.unet.state_dict())
+        state.pop("conv_in.conv.weight")
+        with self.assertRaisesRegex(RuntimeError, "Pretrained UNet checkpoint mismatch"):
+            self.load({"unet_state_dict": state})
+
+    def test_legacy_checkpoint_keeps_convolutional_sampling(self):
+        loaded = self.load({"bridge": self.model.state_dict()})
+        self.assertFalse(loaded.resblock_updown)
+
+    def test_explicit_resampling_mismatch_is_rejected(self):
+        with self.assertRaisesRegex(RuntimeError, "resampling architecture differs"):
+            self.load({"bridge": self.model.state_dict()}, resblock_updown=True)
+
 
 if __name__ == "__main__":
     unittest.main()

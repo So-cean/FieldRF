@@ -295,6 +295,7 @@ def main():
         bridge = DDP(bridge, device_ids=[local_rank], find_unused_parameters=False)
 
     bridge_raw = bridge.module if args.dist else bridge
+    cfg["bridge"]["resblock_updown"] = bridge_raw.resblock_updown
 
     # ── EMA ── #
     ema = None
@@ -838,6 +839,7 @@ def main():
                     "scale_factor": scale_factor,
                     "num_train_timesteps": num_train_timesteps,
                     "bridge_config": {
+                        "resblock_updown": bridge_raw.resblock_updown,
                         "unet_channels": tuple(bridge_cfg.get("unet_channels", [64, 128, 256, 512])),
                         "num_res_blocks": tuple(bridge_cfg.get("num_res_blocks", [2, 2, 2, 2])),
                         "attention_levels": tuple(bridge_cfg.get("attention_levels", [False, False, True, True])),

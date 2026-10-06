@@ -10,6 +10,15 @@ import torch
 from utils.domains import NUM_CLASSES
 
 
+def infer_resblock_updown(state_dict, prefix=""):
+    """Recognize MAISI residual samplers or legacy convolutional samplers."""
+    keys = [key for key in state_dict if key.startswith(prefix)]
+    return any(
+        ".downsampler.norm1." in key or ".upsampler.norm1." in key
+        for key in keys
+    )
+
+
 def load_pretrained(
     model_class,
     ckpt_path,
@@ -31,6 +40,7 @@ def load_pretrained(
     use_flash_attention=True,
     device="cpu",
     load_ema=False,
+    resblock_updown=None,
     **kwargs,
 ):
     """Load pretrained UNet (4ch conv_in intact), attach fresh ControlNet.
@@ -39,6 +49,25 @@ def load_pretrained(
     This avoids the oscillation observed in RF when ControlNet was
     initialized with copied UNet weights while the UNet was trainable.
     """
+    sd = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+    if "bridge" in sd:
+        inferred_resampling = infer_resblock_updown(sd["bridge"], "unet.")
+    else:
+        if "state_dict" in sd:
+            sd = sd["state_dict"]
+        if "unet_state_dict" in sd:
+            sd = sd["unet_state_dict"]
+        sd = {key[7:] if key.startswith("module.") else key: value
+              for key, value in sd.items()}
+        inferred_resampling = infer_resblock_updown(sd)
+    if resblock_updown is None:
+        resblock_updown = inferred_resampling
+    elif bool(resblock_updown) != inferred_resampling:
+        raise RuntimeError(
+            "[RF] UNet resampling architecture differs from checkpoint: "
+            f"requested resblock_updown={resblock_updown}, "
+            f"checkpoint requires {inferred_resampling}"
+        )
     bridge = model_class(
         unet_channels=unet_channels,
         num_res_blocks=num_res_blocks,
@@ -56,9 +85,8 @@ def load_pretrained(
         source_injection=source_injection,
         source_adapter_channels=source_adapter_channels,
         use_flash_attention=use_flash_attention,
+        resblock_updown=resblock_updown,
     )
-
-    sd = torch.load(ckpt_path, map_location="cpu", weights_only=False)
 
     # Handle Stage 1/2 training checkpoint format (full bridge state dict)
     if "bridge" in sd:
@@ -93,14 +121,7 @@ def load_pretrained(
         bridge = bridge.to(device)
         return bridge
 
-    # Handle raw pretrained format
-    if "state_dict" in sd:
-        sd = sd["state_dict"]
-    if "unet_state_dict" in sd:
-        sd = sd["unet_state_dict"]
-
-    # Strip DDP prefix
-    cleaned = {k[7:] if k.startswith("module.") else k: v for k, v in sd.items()}
+    cleaned = dict(sd)
 
     # Pretrained has 128 classes; we use 15 -> reinit class_embedding
     cleaned.pop("class_embedding.weight", None)
@@ -108,14 +129,17 @@ def load_pretrained(
     # conv_in stays 4ch (pretrained intact)
     missing, unexpected = bridge.unet.load_state_dict(cleaned, strict=False)
     missing_real = [k for k in missing if "class_embedding" not in k]
-    if missing_real:
-        print(f"[RF] UNet missing (first 5): {missing_real[:5]}")
-    if unexpected:
-        print(f"[RF] UNet unexpected (first 5): {unexpected[:5]}")
+    if missing_real or unexpected:
+        raise RuntimeError(
+            "[RF] Pretrained UNet checkpoint mismatch: "
+            f"missing={missing_real[:5]}, unexpected={unexpected[:5]}. "
+            "All pretrained parameters except the domain embedding must match."
+        )
 
     # ControlNet: random init (no copy from UNet)
     bridge = bridge.to(device)
     print(f"[RF] Bridge ready: in_channels={bridge.in_channels}, "
+          f"resblock_updown={bridge.resblock_updown}, "
           f"num_train_timesteps={num_train_timesteps}, "
           f"controlnet=on (feat4 {feat4_channels}ch, "
           f"conditioning_embedding="

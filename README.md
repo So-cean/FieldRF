@@ -90,6 +90,14 @@ upstream weight releases, independently of the FieldRF source layout.
 | `autoencoder_v1.pt` | [Shared MAISI VAE, NVIDIA release `4156648`](https://huggingface.co/nvidia/NV-Generate-CT/blob/4156648ce44f5561b75d96b12600fe5afe6b6e8f/models/autoencoder_v1.pt) | `vae.checkpoint` in pretraining, endpoint alignment and VAE adaptation |
 | `diff_unet_3d_rflow-mr-brain_v0.pt` | [Brain-MRI RF, NVIDIA release `67ba36a`](https://huggingface.co/nvidia/NV-Generate-MR-Brain/blob/67ba36a4d3aae5854d7f2f56638e26a641684433/models/diff_unet_3d_rflow-mr-brain_v0.pt) | `bridge.ckpt_path` in `pretrain.yaml` |
 
+The released brain RF checkpoint uses residual down/up-sampling. The loader
+infers this architecture from its parameters, restores every pretrained UNet
+parameter except the intentionally replaced MRI-domain embedding, and rejects
+missing or unexpected network parameters. Legacy FieldRF checkpoints retain
+their original convolutional resampling through the same inference mechanism.
+New checkpoints record the resolved architecture. A run that only prints
+parameter-mismatch warnings is not a successful pretrained initialization.
+
 Record the download revisions and checksums. Replacing the RF initialization
 with a newer upstream release changes this recipe. MRI volumes, pretrained
 weights, generated caches and trained FieldRF checkpoints are not bundled.
@@ -286,7 +294,7 @@ explicit paths, and parameter layouts and state-dict keys are preserved.
 
 ## Tests and experiment reproduction
 
-The [committed CPU test suite](FieldRF/tests/) contains 27 tests across six
+The [committed CPU test suite](FieldRF/tests/) contains 31 tests across six
 files. Install its dependencies and run it from the repository root:
 
 ```bash

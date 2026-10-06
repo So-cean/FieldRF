@@ -47,7 +47,7 @@ python -m pip install -r requirements.txt
 python -m pytest -q FieldRF/tests
 ```
 
-The FieldRF suite contains 27 tests in six files, covering data pairing, RF/alignment
+The FieldRF suite contains 31 tests in six files, covering data pairing, RF/alignment
 losses, spatial supervision, numerical integration/autograd and checkpoint/EMA
 loading. It uses synthetic tensors, small networks and temporary cache/weight
 files. No MRI dataset, Brain-ID checkout or released model checkpoint is needed.

@@ -50,12 +50,16 @@ class FieldRFModel(nn.Module):
         source_injection=None,
         source_adapter_channels=16,
         use_flash_attention=True,
+        resblock_updown=False,
     ):
         super().__init__()
         self.z_channels = z_channels
         self.feat4_channels = feat4_channels
         self.scale_factor = scale_factor
         self.num_train_timesteps = num_train_timesteps
+        # MAISI RF weights use residual resampling; legacy FieldRF weights
+        # used convolutional resampling. Checkpoint loaders infer this flag.
+        self.resblock_updown = bool(resblock_updown)
         self.conditioning_embedding_num_channels = tuple(
             int(value) for value in conditioning_embedding_num_channels
         )
@@ -89,6 +93,7 @@ class FieldRFModel(nn.Module):
             num_class_embeds=num_class_embeds,
             include_spacing_input=True,
             use_flash_attention=use_flash_attention,
+            resblock_updown=self.resblock_updown,
         )
         self.source_adapter = None
         if self.source_injection == "adapter":

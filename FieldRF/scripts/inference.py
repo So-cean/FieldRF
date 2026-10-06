@@ -33,6 +33,7 @@ import yaml
 _FIELDRF = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_FIELDRF))
 from models.model import FieldRFModel  # noqa: E402
+from models.checkpoint import infer_resblock_updown
 from utils.domains import (  # noqa: E402
     get_class_label,
     MODALITIES,
@@ -272,6 +273,7 @@ def main():
         source_injection=bc.get("source_injection"),
         source_adapter_channels=int(bc.get("source_adapter_channels", 16)),
         use_flash_attention=bc.get("use_flash_attention", True),
+        resblock_updown=infer_resblock_updown(ckpt.get("bridge", {}), "unet."),
     )
     if "bridge" not in ckpt:
         raise RuntimeError(
