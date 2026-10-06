@@ -1,5 +1,7 @@
 # FieldRF
 
+**Paper:** [FieldRF: Anatomy-Conditioned 3D Rectified Flow for Unified Cross-Field MRI Harmonization](https://papers.miccai.org/miccai-2026-sat/paper/MRIxFields2026_026.pdf)
+
 Anatomy-conditioned 3D rectified flow for cross-field MRI harmonization.
 FieldRF uses one shared model across **T1W, T2W and T2FLAIR** and five field
 strengths: **0.1T, 1.5T, 3T, 5T and 7T**.
@@ -10,6 +12,10 @@ features, a shared rectified-flow network and paired cross-field adaptation.
 feature caches.** Brain-ID source is a pinned Git submodule; its pretrained
 weights and the MAISI weights must be downloaded separately. See the
 [complete cache and training procedure](#reproduction-pipeline).
+
+![FieldRF pipeline: unpaired rectified-flow training, paired fine-tuning and cross-field MRI harmonization](assets/fieldrf_pipeline.png)
+
+*Pipeline overview from the paper.*
 
 | Directory | Contents |
 |---|---|

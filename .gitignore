@@ -118,4 +118,5 @@ temp/
 /Submission/build_submission/
 /assets/**
 !/assets/fig_task_setting.png
+!/assets/fieldrf_pipeline.png
 /Baseline/mrixfields/losses/sinkhorn.py
