@@ -11,7 +11,7 @@ import torch
 FIELDRF_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(FIELDRF_ROOT))
 
-from models.model import (  # noqa: E402
+from losses import (  # noqa: E402
     _weighted_axis_l1,
     spatial_axis_overlap_weights,
 )

@@ -11,13 +11,36 @@ ControlNet, unpaired pretraining and paired cross-field adaptation.
 | `data/dataset.py` | Cached unpaired volumes, paired field adaptation and visualization pairs |
 | `data/volume_dataset.py` | Raw NIfTI volumes and preprocessing for cache generation |
 | `data/alignment_dataset.py` | Unpaired and synthetic endpoint-alignment datasets |
-| `models/model.py` | `FieldRFModel`, RF integration and training loss |
+| `models/model.py` | `FieldRFModel`, RF paths, sampling, inversion and checkpoint loading |
+| `losses.py` | RF velocity loss, spatially weighted supervision and paired latent/gradient loss |
 | `models/endpoint_aligner.py` | `EndpointAligner`, shared domain-conditioned endpoint correction |
 | `utils/visualization.py` | VAE decoding, reference-grid metrics and rendering |
 
 Modules, class names, entry points and configuration names describe their roles.
 Experiment epochs and checkpoint filenames identify artifacts independently
 of the source-code layout.
+
+## Dataset roles
+
+`dataset.py` is a module containing several dataset classes, rather than a
+single dataset type. RF and endpoint-aligner training read cached MAISI
+latents and Brain-ID features. `VolumeDataset` supplies raw NIfTI volumes
+to the cache writers. VAE decoder adaptation has a separate `LatentImageDataset`
+in `scripts/finetune_vae.py`, which matches cached latents to raw image patches.
+
+| Class | Input and sampling | Consumer |
+|---|---|---|
+| `VolumeDataset` | Raw MRI volumes, standardized preprocessing | Latent and Brain-ID cache writers |
+| `MultiFieldCacheDataset` | Individual cached volumes from multiple modalities and fields; no anatomical pairing required | Unpaired RF pretraining |
+| `PairedFieldDataset` | Real same-subject, same-modality source/target field pairs | Final paired RF adaptation |
+| `PairedVisualizationDataset` | Matched prospective cases for rendering and validation | Visualization helpers |
+| `UnpairedEndpointAlignmentDataset` | Independent real source/reference caches in the same modality | Endpoint alignment with distribution losses |
+| `PairedAlignmentCacheDataset` | Same-anatomy synthetic-source / real-target cache pairs, optionally specified by a manifest | Auxiliary synthetic-alignment trainer |
+
+Independent samples from `UnpairedEndpointAlignmentDataset` are suitable for
+distribution matching, not voxel-wise reconstruction. Real paired adaptation
+uses `Training_prospective`; the auxiliary synthetic-alignment stage is a
+separate experiment.
 
 ## Dependencies and paths
 

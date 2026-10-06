@@ -1,10 +1,13 @@
-"""Paired cache dataset for RF Stage-1 endpoint/cross-condition alignment.
+"""Cached datasets for endpoint alignment and synthetic alignment experiments.
 
-The dataset is deliberately separate from ``PairedVisualizationDataset``: prospective
-pairs remain validation-only. Training pairs should be synthetic-source /
-real-target pairs cached with the same latent and Brain-ID formats as Stage 1.
+``UnpairedEndpointAlignmentDataset`` draws independent real source/reference
+samples for distribution losses during endpoint-aligner training.
+``PairedAlignmentCacheDataset`` loads same-anatomy synthetic-source / real-target
+pairs for the auxiliary synthetic-alignment trainer. That auxiliary stage keeps
+real prospective pairs for validation. The final paired adaptation stage uses
+``PairedFieldDataset`` from ``data.dataset`` and real prospective training pairs.
 
-Two layouts are supported:
+The synthetic paired dataset supports two layouts:
 
 1. Directory mode::
 

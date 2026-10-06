@@ -41,6 +41,7 @@ from models.model import (  # noqa: E402
     get_class_label,
     timestep_transform,
 )
+from losses import terminal_latent_loss  # noqa: E402
 from models.endpoint_aligner import EndpointAligner  # noqa: E402
 from utils.visualization import archive_metrics_csvs  # noqa: E402
 
@@ -160,21 +161,6 @@ def _make_loader(dataset, config):
     if workers > 0:
         kwargs["prefetch_factor"] = int(config["prefetch_factor"])
     return DataLoader(**kwargs)
-
-
-def _terminal_latent_loss(prediction, target, edge_weight):
-    """Direct paired regression in the VAE latent plus spatial gradients."""
-    prediction = prediction.float()
-    target = target.float()
-    l1 = F.l1_loss(prediction, target)
-    edges = []
-    for dimension in (-3, -2, -1):
-        predicted_edge = torch.diff(prediction, dim=dimension)
-        target_edge = torch.diff(target, dim=dimension)
-        normalizer = target_edge.detach().abs().mean().clamp_min(0.05)
-        edges.append(F.l1_loss(predicted_edge, target_edge) / normalizer)
-    edge = torch.stack(edges).mean()
-    return l1 + float(edge_weight) * edge, l1, edge
 
 
 def _terminal_rollout(
@@ -607,7 +593,7 @@ def main():
                         gradient_steps=int(rollout["gradient_steps"]),
                     )
                     terminal_target, terminal_l1, terminal_edge = (
-                        _terminal_latent_loss(
+                        terminal_latent_loss(
                             cross_terminal,
                             target_scaled,
                             float(rollout["edge_weight"]),

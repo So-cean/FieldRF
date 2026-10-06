@@ -36,10 +36,10 @@ import yaml
 # FieldRF imports
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from models.model import (
-    FieldRFModel, rectified_flow_loss, controlnet_norms, source_channel_norms,
+    FieldRFModel, controlnet_norms, source_channel_norms,
     get_class_label, NUM_CLASSES, MODALITIES, timestep_transform,
-    spatial_axis_overlap_weights,
 )
+from losses import rectified_flow_loss, spatial_axis_overlap_weights
 from data.dataset import MultiFieldCacheDataset, PairedVisualizationDataset
 
 try:
