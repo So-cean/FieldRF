@@ -7,7 +7,7 @@ first, then install the Python dependencies from the repository root:
 
 ```bash
 python -m pip install -r requirements.txt
-python -m pip install --no-deps -e Baseline/
+python -m pip install --no-deps -e FieldRF/ -e Baseline/
 ```
 
 `requirements.txt` covers FieldRF, the comparison baselines and submission
@@ -44,13 +44,18 @@ Install the test dependencies and run the committed test suite:
 
 ```bash
 python -m pip install -r requirements.txt
+python -m pip install --no-deps -e FieldRF/
 python -m pytest -q FieldRF/tests
 ```
 
-The FieldRF suite contains 40 tests in six files, covering data pairing, RF/alignment
+The FieldRF suite contains 46 tests in nine files, covering data pairing, RF/alignment
 losses, spatial supervision, numerical integration/autograd and checkpoint/EMA
 loading. It uses synthetic tensors, small networks and temporary cache/weight
 files. No MRI dataset, Brain-ID checkout or released model checkpoint is needed.
+The native DDP regression uses two CPU/Gloo processes. RF/VAE epoch-boundary
+resume is compared against uninterrupted optimization. GitHub Actions installs
+the package and runs these tests on Python 3.10/3.12; its CPU Torch/MONAI
+versions are specific to CI, while runtime requirements retain hardware freedom.
 See the [test inventory](../FieldRF/README.md#cpu-regression-tests) and
 [test sources](../FieldRF/tests/).
 Run `python -m pytest -q FieldRF/tests mrix2026-cli/tests` to include the two

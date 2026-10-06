@@ -193,14 +193,39 @@ The short run checks execution and artifact consistency on real inputs. It
 does not reproduce full-dataset, full-duration training or published challenge
 metrics. NPU/DDP execution, all five target-field inference sweeps, and GPU
 SynthSeg/submission evaluation were not included in this pipeline check.
-A source review found that `scripts/train.py` computes the RF loss through
-`bridge.module`, and `scripts/finetune_vae.py` decodes through `vae.module` after
-wrapping their models in DDP. Both paths bypass `DDP.forward`. A two-process
-CPU reproducer demonstrated divergent weights when bypassing the wrapper,
-and matching weights when using its forward call. FieldRF RF/VAE distributed
-training is therefore currently unsupported; use a single device until the
-distributed paths are corrected and validated. This finding concerns FieldRF,
-not the separate baseline trainers.
+The DDP bypass found during the 2026-10-06 review was corrected on
+2026-10-07: RF predictors use individually wrapped UNet/ControlNet/adapter
+forwards, and VAE adaptation wraps the complete decode path. Their checkpoint
+parameter names remain unchanged. Rank-zero validation uses raw modules with
+barriers. The historical RF forward retains registered but unused UNet middle
+block parameters; DDP detects these unused parameters while preserving the
+existing computation and predictions.
+
+The 2026-10-07 CPU suite passed **48 tests with 9 subtests** (46 FieldRF,
+2 submission CLI). Two Gloo processes with small real MONAI networks verified
+RF gradients against a single-process averaged reference, exact cross-rank
+parameter agreement, conditional adapter/multi-step graft backward calls,
+rank-zero evaluation, VAE decoder synchronization and distributed resume.
+Actual RF and VAE epoch loops also produced bitwise identical model/optimizer
+state after resuming an epoch-1 checkpoint and after uninterrupted two-epoch
+training. VAE checks included a partial accumulation window, learning-rate
+progress, loss-balancing EMA and per-rank Python/NumPy/Torch/loader random
+streams. Test inputs and architecture widths were reduced; this does not
+replace CUDA/NCCL or full-size hardware validation.
+
+Source now uses the `fieldrf` namespace; `scripts/` remains compatible CLI
+entry points. Installed imports were checked with an unrelated top-level
+`utils` module present. New VAE epoch checkpoints contain full training state;
+older weights-only decoder files remain valid for inference/initialization,
+and are rejected by `--resume_ckpt` with guidance to use `--init_ckpt`.
+Resume requires the original rank count, batch/accumulation recipe and number
+of batches per epoch. Data-loader workers are recreated each epoch so restart
+boundaries have a reproducible worker seed. The saved LR plan is retained.
+
+GitHub Actions runs installation, CLI and CPU regressions for Python 3.10/3.12.
+Its CPU PyTorch/torchvision and MONAI constraints are local to the workflow;
+repository runtime requirements still do not pin PyTorch or CUDA. The workflow
+requires neither MRI data nor pretrained/released weights.
 
 The environment reused an existing PyTorch stack rather than resolving all
 dependencies from an empty environment. Reference evaluation implementations

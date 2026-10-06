@@ -24,6 +24,7 @@ cd FieldRF
 # Also run this for an existing clone:
 git submodule update --init --recursive
 python -m pip install -r requirements.txt
+python -m pip install --no-deps -e FieldRF/
 ```
 
 Brain-ID source is pinned at
@@ -60,7 +61,7 @@ Replace every `/path/to/` placeholder, set the weight paths above, and use the
 same absolute `data.data_root` and `data.cache_root` throughout. Keep the supplied
 architecture, modalities, fields and `feat_cache_name: brainid_feat`.
 
-The data root must contain:
+Use the benchmark's official split directories. The data root must contain:
 
 ```text
 Training_retrospective/{T1W,T2W,T2FLAIR}/{0.1T,1.5T,3T,5T,7T}/*.nii.gz
@@ -140,6 +141,22 @@ latent caches remain valid. Paired adaptation uses same-subject, same-modality
 prospective training pairs, with the VAE frozen. RF, ControlNet and the aligner
 share parameters across fields and modalities.
 
+Distributed RF pretraining, endpoint alignment and VAE adaptation use native
+PyTorch DDP. YAML batch sizes are per device. For example:
+
+```bash
+torchrun --standalone --nproc_per_node=2 scripts/train.py --config configs/pretrain.yaml --dist
+torchrun --standalone --nproc_per_node=2 scripts/finetune_vae.py --config configs/vae_finetune.yaml --dist
+```
+
+Resume RF pretraining with `--resume <fieldrf_epochN.pt>` and VAE adaptation
+with `--resume_ckpt <vae_finetune_epochN.pt>`. New VAE training checkpoints
+restore weights, optimizer, LR plan, epoch, accumulation progress at the epoch
+boundary, loss balancing and per-rank random/data-loader state. Keep the same
+training recipe and rank count. For older VAE files containing only weights,
+use `--init_ckpt` to start a new adaptation run. Paired RF adaptation currently
+runs on a single CUDA device.
+
 ## Inference
 
 Use the paired checkpoint for **both** RF and endpoint-aligner EMA, together
@@ -176,7 +193,10 @@ Run the CPU suite from the repository root:
 python -m pytest -q FieldRF/tests mrix2026-cli/tests
 ```
 
-**42 tests with 9 subtests passed.** A separate real-data check on one A100 80GB
+**48 tests with 9 subtests passed locally.** The suite includes two-rank CPU/Gloo
+gradient averaging, parameter synchronization and exact epoch-boundary resume.
+[CI](https://github.com/So-cean/FieldRF/actions/workflows/ci.yml) checks package
+installation, command entry points and tests on Python 3.10/3.12. A separate real-data check on one A100 80GB
 used the full network: 45 latent and 45 Brain-ID caches, short runs of all four
 training stages, a complete 60-pair fine-tuning epoch, and 25 inference outputs.
 Caches/weights were finite, the VAE encoder was unchanged and its decoder
@@ -188,8 +208,8 @@ subject and one volume per split/modality/field. Run each stage for one epoch
 and use the resulting aligner/decoder paths. See the
 [smoke instructions and test record](REPRODUCIBILITY.md#run-an-isolated-small-data-check)
 for details. Full-duration benchmark metrics and NPU execution were not verified.
-Use single-device FieldRF training: the RF/VAE DDP branches currently bypass
-gradient synchronization; see [remaining limits](REPRODUCIBILITY.md#remaining-limits).
+CUDA/NCCL distributed execution remains to be validated on hardware; the
+DDP regressions use CPU/Gloo. See [remaining limits](REPRODUCIBILITY.md#remaining-limits).
 
 For comparison methods, configure `.env` from `.env.example` and follow the
 [baseline guide](Baseline/README.md).

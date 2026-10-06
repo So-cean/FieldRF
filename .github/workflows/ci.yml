@@ -1,0 +1,58 @@
+name: CPU tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cpu-tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.12']
+    env:
+      OMP_NUM_THREADS: '2'
+      MKL_NUM_THREADS: '2'
+      MPLBACKEND: Agg
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            FieldRF/pyproject.toml
+      - name: Install CPU test environment
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install torch==2.6.0 torchvision==0.21.0 --index-url https://download.pytorch.org/whl/cpu
+          printf 'torch==2.6.0\ntorchvision==0.21.0\nmonai==1.5.1\n' > "$RUNNER_TEMP/fieldrf-ci-constraints.txt"
+          python -m pip install -r requirements.txt -c "$RUNNER_TEMP/fieldrf-ci-constraints.txt"
+          python -m pip install --no-deps --no-build-isolation -e FieldRF/ -e Baseline/ -e mrix2026-cli/
+      - name: Check installed package and entry points
+        working-directory: ${{ runner.temp }}
+        run: |
+          python -c "from fieldrf.models import FieldRFModel, EndpointAligner; import fieldrf.training.vae"
+          fieldrf-pretrain --help
+          fieldrf-align --help
+          fieldrf-finetune --help
+          fieldrf-vae-finetune --help
+          fieldrf-infer --help
+          fieldrf-cache-latents --help
+          fieldrf-cache-brainid --help
+      - name: Run CPU regressions including two-rank DDP and resume
+        run: python -m pytest -q FieldRF/tests mrix2026-cli/tests

@@ -10,6 +10,7 @@ ControlNet, unpaired pretraining and paired cross-field adaptation.
 |---|---|
 | `fieldrf/data/dataset.py` | Cached unpaired volumes, paired field adaptation and visualization pairs |
 | `fieldrf/data/volume_dataset.py` | Raw NIfTI volumes and preprocessing for cache generation |
+| `fieldrf/data/vae_dataset.py` | Cached latent/raw image patches for decoder adaptation |
 | `fieldrf/data/alignment_dataset.py` | Real unpaired samples for endpoint-distribution alignment |
 | `fieldrf/models/model.py` | `FieldRFModel`, network assembly and velocity prediction |
 | `fieldrf/models/networks.py` | Gradient-safe MAISI UNet and source-latent adapter |
@@ -17,6 +18,10 @@ ControlNet, unpaired pretraining and paired cross-field adaptation.
 | `fieldrf/models/sampling.py` | Euler/Heun inversion, reverse sampling and differentiable graft generation |
 | `fieldrf/models/checkpoint.py` | Strict VAE/pretrained/full RF loading, EMA restoration and source-channel adaptation |
 | `fieldrf/models/losses.py` | RF velocity loss, spatially weighted supervision and paired latent/gradient loss |
+| `fieldrf/models/vae.py` | Trainable MAISI decode path, including latent projection |
+| `fieldrf/training/` | Stage loops, submodule DDP, EMA, atomic checkpoints and resumable LR scheduling |
+| `fieldrf/cli/` | Argument parsing and training dispatch |
+| `fieldrf/visualization/` | Stage-specific validation and rendering |
 | `fieldrf/models/endpoint_aligner.py` | `EndpointAligner`, shared domain-conditioned endpoint correction |
 | `fieldrf/utils/domains.py` | Modality/field labels shared by data and models |
 | `fieldrf/utils/diagnostics.py` | ControlNet and source-path training-log diagnostics |
@@ -39,7 +44,7 @@ training stages. Stage visualization lives in `fieldrf.visualization`.
 single dataset type. RF and endpoint-aligner training read cached MAISI
 latents and Brain-ID features. `VolumeDataset` supplies raw NIfTI volumes
 to the cache writers. VAE decoder adaptation has a separate `LatentImageDataset`
-in the VAE training module, which matches cached latents to raw image patches.
+in `fieldrf/data/vae_dataset.py`, which matches cached latents to raw image patches.
 
 | Class | Input and sampling | Consumer |
 |---|---|---|
@@ -86,7 +91,7 @@ augmentation is used by default.
 
 ## CPU regression tests
 
-The committed suite contains 40 tests in six files:
+The committed suite contains 46 tests in nine files:
 
 | File | Tests | Coverage |
 |---|---:|---|
@@ -97,10 +102,15 @@ The committed suite contains 40 tests in six files:
 | [test_model_loading.py](tests/test_model_loading.py) | 16 | Full/EMA and raw UNet loading, strict VAE restoration, source adaptation, invalid checkpoints and inversion configuration |
 | [test_sampling.py](tests/test_sampling.py) | 4 | Euler/Heun direction, latent scaling, gradient propagation and deterministic endpoint reversal |
 
+| [test_training.py](tests/test_training.py) | 4 | RF/VAE full epoch-boundary resume, frozen encoding path and complete training state |
+| [test_distributed.py](tests/test_distributed.py) | 1 | Two-rank real RF gradient averaging, adapter rollouts, VAE synchronization and resume |
+| [test_namespace.py](tests/test_namespace.py) | 1 | Installed imports coexist with unrelated top-level utils |
+
 From the repository root:
 
 ```bash
 python -m pip install -r requirements.txt
+python -m pip install --no-deps -e FieldRF/
 python -m pytest -q FieldRF/tests
 ```
 
