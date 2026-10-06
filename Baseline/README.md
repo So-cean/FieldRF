@@ -6,7 +6,8 @@ CUT、CycleGAN、StarGANv2 及其他保留基线的训练与推理实现。
 ## 环境与路径
 
 依赖与路径设置见 [setup](../docs/README.md)。
-不要通过旧 `environment.yml` 或 `setup.py` 在现有环境中重装 PyTorch 栈。
+根目录 `requirements.txt` 列出当前 Python 依赖；PyTorch/torchvision 按硬件配置，
+文件不固定其版本或 CUDA 版本。SynthSeg 使用单独配置的环境。
 各入口脚本会定位本目录的 `mrixfields`，通常无需重新安装本包。
 
 根目录 `.env.example` 是路径模板，`.env` 保留在本机。检查 `DATA_DIR`、

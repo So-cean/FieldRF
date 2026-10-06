@@ -2,28 +2,51 @@
 
 ## Python dependencies
 
-The baseline package requires Python 3.10 or later. FieldRF requires a compatible
-PyTorch/MONAI installation with MAISI autoencoder, rectified-flow and ControlNet
-components, plus NumPy, NiBabel, PyYAML, blosc2, matplotlib and scikit-image.
-Baseline methods additionally use SciPy, LPIPS, SimpleITK, h5py and tqdm;
-segmentation-based objectives require their separately configured pretrained models.
-Use `pytest` for the lightweight contract checks.
-
-The optional root `environment.yml` describes a baseline CUDA environment;
-it is not a complete FieldRF/MAISI environment specification. Install the
-appropriate PyTorch stack for your hardware in a new environment. Reuse an
-existing compatible installation when one is available.
-
-Entry points locate the local Python sources directly. To register the baseline
-package in an existing configured environment without reinstalling dependencies:
+Use Python 3.10 or later. Configure PyTorch and torchvision for your hardware
+first, then install the Python dependencies from the repository root:
 
 ```bash
+python -m pip install -r requirements.txt
 python -m pip install --no-deps -e Baseline/
 ```
 
-The [submission CLI](../mrix2026-cli/README.md) can run through `PYTHONPATH` or
-be installed separately with `--no-deps`. SynthSeg requires its own supported
-installation and executable; see the CLI guide.
+`requirements.txt` covers FieldRF, the comparison baselines and submission
+utilities. It specifies no PyTorch/torchvision version, CUDA runtime version or
+CUDA wheel index. A compatible PyTorch installation can be reused. MONAI must
+provide the MAISI autoencoder/UNet and ControlNet components; blosc2 must provide
+its native NDArray containers, `asarray`, `open` and metadata support.
+
+The FieldRF package also declares its direct dependencies in
+[`FieldRF/pyproject.toml`](../FieldRF/pyproject.toml). Baseline dependencies are
+listed in [`Baseline/setup.py`](../Baseline/setup.py). Source entry points locate
+the local packages directly. To register the submission CLI in the configured
+environment:
+
+```bash
+python -m pip install --no-deps -e mrix2026-cli/
+```
+
+Brain-ID source and weights are external artifacts; use the dependencies of the
+selected Brain-ID checkout for feature-cache generation. SynthSeg segmentation
+uses a separately configured installation and executable, with its own
+TensorFlow/Keras environment. See the [CLI guide](../mrix2026-cli/README.md).
+NPU installations use their platform-specific PyTorch adapter separately.
+
+## CPU tests
+
+Install the test dependencies and run the committed test suite:
+
+```bash
+python -m pip install -r requirements-dev.txt
+python -m pytest -q FieldRF/tests
+```
+
+The suite contains 25 tests in five files, covering data pairing, RF/alignment
+losses, spatial supervision, numerical integration/autograd and checkpoint/EMA
+loading. It uses synthetic tensors, small networks and temporary cache/weight
+files. No MRI dataset, Brain-ID checkout or released model checkpoint is needed.
+See the [test inventory](../FieldRF/README.md#cpu-regression-tests) and
+[test sources](../FieldRF/tests/).
 
 ## Data and checkpoints
 
@@ -37,7 +60,12 @@ Set `BRAINID_ROOT` to the external Brain-ID checkout.
 For baselines, configure `.env` from `.env.example`, plus any cache or auxiliary
 checkpoint paths specified by the selected YAML.
 
-## Execution
+## Full experiments
+
+Experiment reproduction uses the external data and weights above, followed by
+cache generation, training, adaptation, inference and reference evaluation.
+CPU test results verify code contracts; experimental metrics come from running
+this complete pipeline on the MRI dataset.
 
 Run each method from the working directory stated in its README. Baseline
 multi-device training uses native PyTorch DDP through `torchrun` with `--dist`;

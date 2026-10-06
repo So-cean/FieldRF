@@ -121,10 +121,26 @@ consumed by [the packaging tools](../mrix2026-cli/README.md).
 Existing checkpoints can retain their original filenames: the loader accepts
 explicit paths, and parameter layouts and state-dict keys are preserved.
 
-## Tests
+## CPU regression tests
+
+The committed suite contains 25 tests in five files:
+
+| File | Tests | Coverage |
+|---|---:|---|
+| [test_alignment.py](tests/test_alignment.py) | 9 | Alignment losses, pair manifests, RF paths and truncated inversion |
+| [test_paired_dataset.py](tests/test_paired_dataset.py) | 3 | Same-subject/modality pairing, domain completeness and cross-field record counts |
+| [test_spatial_loss.py](tests/test_spatial_loss.py) | 3 | Fractional evaluation-slab weights and weighted L1 supervision |
+| [test_model_loading.py](tests/test_model_loading.py) | 6 | Full/EMA and raw UNet loading, source adaptation and invalid checkpoints |
+| [test_sampling.py](tests/test_sampling.py) | 4 | Euler/Heun direction, latent scaling, gradient propagation and deterministic endpoint reversal |
 
 From the repository root:
 
 ```bash
+python -m pip install -r requirements-dev.txt
 python -m pytest -q FieldRF/tests
 ```
+
+Tests use synthetic tensors, small networks and temporary cache/checkpoint
+files. They run on CPU without MRI data, a Brain-ID checkout or trained FieldRF
+weights. Full experiment reproduction follows the pipeline above and requires
+the external data, caches and pretrained weights listed under dependencies.

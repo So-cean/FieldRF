@@ -6,6 +6,21 @@ build-backend = "setuptools.build_meta"
 name = "mrixfields-fieldrf"
 version = "0.1.0"
 description = "FieldRF — Anatomy-Conditioned 3D Rectified Flow for Cross-Field MRI Harmonization"
+requires-python = ">=3.10"
+dependencies = [
+    "torch",
+    "monai",
+    "einops",
+    "numpy",
+    "nibabel",
+    "blosc2",
+    "PyYAML",
+    "matplotlib",
+    "scikit-image",
+]
+
+[project.optional-dependencies]
+test = ["pytest"]
 
 [tool.setuptools.packages.find]
 include = ["models", "data", "scripts", "utils", "configs"]

@@ -1,0 +1,28 @@
+# Runtime dependencies for FieldRF, comparison baselines and submission tools.
+# Python >= 3.10. Configure PyTorch/torchvision for your hardware first.
+# No CUDA wheel index or torch/torchvision version is selected here.
+
+# Neural networks and MAISI / ControlNet
+torch
+torchvision
+monai
+einops
+
+# MRI volumes, feature caches and configuration
+numpy
+nibabel
+blosc2
+PyYAML
+
+# Metrics, preprocessing and visualization
+scipy
+scikit-image
+matplotlib
+pillow
+tqdm
+lpips
+pytorch-msssim
+SimpleITK
+
+# Submission metric summaries
+pandas

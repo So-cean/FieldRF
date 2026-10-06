@@ -19,7 +19,8 @@ features, a shared rectified-flow network and paired cross-field adaptation.
 
 ## Getting started
 
-1. Prepare a compatible PyTorch and MONAI environment; see [setup](docs/README.md).
+1. Configure PyTorch/torchvision for your hardware, then install
+   `requirements.txt`; see [setup](docs/README.md).
 2. Obtain the MRI dataset, pretrained MAISI weights and Brain-ID implementation
    and weights separately. Model weights and MRI volumes are not bundled here.
 3. Set the dataset, cache and checkpoint paths in `FieldRF/configs/`.
@@ -28,13 +29,20 @@ features, a shared rectified-flow network and paired cross-field adaptation.
 For baseline runs, copy `.env.example` to `.env`, configure local paths, and
 follow the [baseline guide](Baseline/README.md).
 
-## Reproduction and evaluation
+## Tests and experiment reproduction
 
-Run lightweight FieldRF contract checks from the repository root:
+The [committed CPU test suite](FieldRF/tests/) contains 25 tests across five
+files. Install its dependencies and run it from the repository root:
 
 ```bash
+python -m pip install -r requirements-dev.txt
 python -m pytest -q FieldRF/tests
 ```
+
+The tests cover data pairing, RF/spatial losses, sampling/autograd and
+checkpoint/EMA loading with synthetic fixtures and small networks. See the
+[test inventory](FieldRF/README.md#cpu-regression-tests). Full experiment
+reproduction follows the [method guide](FieldRF/README.md).
 
 Training and inference require the external data, cached representations and
 weights described in the method guide. A pretrained checkpoint can be loaded
