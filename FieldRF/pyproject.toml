@@ -21,6 +21,7 @@ dependencies = [
 
 [project.optional-dependencies]
 test = ["pytest"]
+brainid = ["torchvision", "pytorch-msssim", "SimpleITK", "iopath", "simplejson", "tabulate", "pytz", "visdom"]
 
 [tool.setuptools.packages.find]
 include = ["models", "data", "scripts", "utils", "configs"]

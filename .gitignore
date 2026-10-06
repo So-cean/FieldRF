@@ -31,7 +31,8 @@ build/
 dist/
 tmp/
 temp/
-third_party/
+/third_party/*
+!/third_party/Brain-ID/
 /data/
 # MRI data, caches and model weights
 *.nii

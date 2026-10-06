@@ -26,8 +26,14 @@ environment:
 python -m pip install --no-deps -e mrix2026-cli/
 ```
 
-Brain-ID source and weights are external artifacts; use the dependencies of the
-selected Brain-ID checkout for feature-cache generation. SynthSeg segmentation
+Brain-ID source is pinned by the `third_party/Brain-ID` Git submodule. Initialize
+it from the repository root with `git submodule update --init --recursive`.
+The root requirements include `iopath`, `simplejson`, `tabulate`, `pytz` and
+`visdom`, which its frozen feature-extraction import path needs. When installing
+only the FieldRF package, select its `brainid` extra as well. Use this
+repository's requirements for feature extraction: Brain-ID's own requirements
+describe its older full training environment, including PyTorch version pins.
+Brain-ID pretrained weights still require a separate download. SynthSeg segmentation
 uses a separately configured installation and executable, with its own
 TensorFlow/Keras environment. See the [CLI guide](../mrix2026-cli/README.md).
 NPU installations use their platform-specific PyTorch adapter separately.
@@ -59,8 +65,14 @@ trained model binaries. Replace `/path/to/` placeholders before running.
 
 For FieldRF, configure `data.data_root`, `data.cache_root`, `vae.checkpoint`,
 `bridge.ckpt_path` and adaptation checkpoint paths as applicable.
-Set `BRAINID_ROOT` to the external Brain-ID checkout.
+The cache writer defaults to the pinned `third_party/Brain-ID` checkout;
+`BRAINID_ROOT` is an optional override for a different source checkout.
 Set `brainid.ckpt_path` in the pretraining configuration before feature caching.
+The [FieldRF reproduction guide](../FieldRF/README.md#reproduction-pipeline)
+lists weight downloads, all configuration fields, cache-generation commands
+for all three splits, and the subsequent artifact dependencies. It also covers
+the command-scoped compatibility setting for loading Brain-ID's legacy
+checkpoint with PyTorch 2.6 or later.
 For baselines, configure `.env` from `.env.example`, plus any cache or auxiliary
 checkpoint paths specified by the selected YAML.
 

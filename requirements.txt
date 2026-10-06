@@ -8,6 +8,13 @@ torchvision
 monai
 einops
 
+# Frozen Brain-ID feature extractor (pinned source in third_party/Brain-ID)
+iopath
+simplejson
+tabulate
+pytz
+visdom
+
 # MRI volumes, feature caches and configuration
 numpy
 nibabel

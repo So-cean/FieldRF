@@ -6,6 +6,10 @@ strengths: **0.1T, 1.5T, 3T, 5T and 7T**.
 
 The pipeline combines a MAISI latent representation, frozen Brain-ID anatomical
 features, a shared rectified-flow network and paired cross-field adaptation.
+**The supplied configurations require both MAISI latent caches and Brain-ID
+feature caches.** Brain-ID source is a pinned Git submodule; its pretrained
+weights and the MAISI weights must be downloaded separately. See the
+[complete cache and training procedure](FieldRF/README.md#reproduction-pipeline).
 
 | Directory | Contents |
 |---|---|
@@ -17,12 +21,23 @@ features, a shared rectified-flow network and paired cross-field adaptation.
 
 ## Getting started
 
+```bash
+git clone --recurse-submodules https://github.com/So-cean/FieldRF.git
+cd FieldRF
+# For an existing clone, or a clone made without --recurse-submodules:
+git submodule update --init --recursive
+```
+
 1. Configure PyTorch/torchvision for your hardware, then install
-   `requirements.txt`; see [setup](docs/README.md).
-2. Obtain the MRI dataset, pretrained MAISI weights and Brain-ID implementation
-   and weights separately. Model weights and MRI volumes are not bundled here.
-3. Set the dataset, cache and checkpoint paths in `FieldRF/configs/`.
-4. Follow the [FieldRF reproduction guide](FieldRF/README.md).
+   `requirements.txt`; see [setup](docs/README.md). It includes the Python
+   libraries needed by the frozen Brain-ID feature extractor.
+2. Obtain the MRI dataset, the original MAISI VAE/RF weights and the
+   [Brain-ID pretrained weights](https://github.com/jhuldr/Brain-ID/blob/5d8a2d3eef507180b0cbff4cfe418cdfc5c55253/README.md#playing-with-brain-id-synthesizer-and-feature-extractor).
+3. Set the paths in the four `FieldRF/configs/` files as described in the
+   [configuration checklist](FieldRF/README.md#2-configure-data-and-artifact-paths).
+4. Generate **both caches for all three dataset splits**, then run pretraining,
+   endpoint alignment, decoder adaptation and paired adaptation in the
+   [reproduction guide](FieldRF/README.md#reproduction-pipeline).
 
 For baseline runs, copy `.env.example` to `.env`, configure local paths, and
 follow the [baseline guide](Baseline/README.md).

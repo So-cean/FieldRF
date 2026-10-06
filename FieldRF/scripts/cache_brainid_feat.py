@@ -342,7 +342,10 @@ def main():
     if not brainid_checkpoint or not Path(brainid_checkpoint).is_file():
         raise FileNotFoundError("Set brainid.ckpt_path to the downloaded Brain-ID checkpoint")
     if not (BRAINID_ROOT / "BrainID").is_dir():
-        raise FileNotFoundError("Set BRAINID_ROOT to a checkout of https://github.com/jhuldr/Brain-ID")
+        raise FileNotFoundError(
+            "Initialize the Brain-ID submodule with git submodule update --init --recursive "
+            "from the repository root, or set BRAINID_ROOT to another Brain-ID checkout"
+        )
     # Import upstream utilities only during execution, so --help and native
     # cache serialization do not require an external Brain-ID installation.
     sys.path.insert(0, str(BRAINID_ROOT))
