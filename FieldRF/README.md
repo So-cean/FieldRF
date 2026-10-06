@@ -136,7 +136,7 @@ The committed suite contains 25 tests in five files:
 From the repository root:
 
 ```bash
-python -m pip install -r requirements-dev.txt
+python -m pip install -r requirements.txt
 python -m pytest -q FieldRF/tests
 ```
 

@@ -37,7 +37,7 @@ NPU installations use their platform-specific PyTorch adapter separately.
 Install the test dependencies and run the committed test suite:
 
 ```bash
-python -m pip install -r requirements-dev.txt
+python -m pip install -r requirements.txt
 python -m pytest -q FieldRF/tests
 ```
 

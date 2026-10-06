@@ -1,4 +1,4 @@
-# Runtime dependencies for FieldRF, comparison baselines and submission tools.
+# Python dependencies for FieldRF, comparison baselines, submission tools and tests.
 # Python >= 3.10. Configure PyTorch/torchvision for your hardware first.
 # No CUDA wheel index or torch/torchvision version is selected here.
 
@@ -26,3 +26,6 @@ SimpleITK
 
 # Submission metric summaries
 pandas
+
+# CPU unit and regression tests
+pytest

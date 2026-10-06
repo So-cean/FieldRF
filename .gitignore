@@ -97,3 +97,6 @@ third_party/
 /docs/REPOSITORY_SPLIT.json
 /docs/REPOSITORY_SPLIT_VALIDATION.json
 /docs/WORKSPACE.md
+
+# Manuscripts remain local until prepared for release
+/paper/

@@ -15,7 +15,6 @@ features, a shared rectified-flow network and paired cross-field adaptation.
 | [Submission/](Submission/README.md) | Validation submission format and packaging |
 | [mrix2026-cli/](mrix2026-cli/README.md) | Segmentation, building, checking and ZIP utilities |
 | [Tutorial/](Tutorial/README.md) | Introductory baseline notebooks |
-| [paper/](paper/README.md) | FieldRF manuscript and figures |
 
 ## Getting started
 
@@ -35,7 +34,7 @@ The [committed CPU test suite](FieldRF/tests/) contains 25 tests across five
 files. Install its dependencies and run it from the repository root:
 
 ```bash
-python -m pip install -r requirements-dev.txt
+python -m pip install -r requirements.txt
 python -m pytest -q FieldRF/tests
 ```
 
@@ -49,7 +48,7 @@ weights described in the method guide. A pretrained checkpoint can be loaded
 by specifying its existing filename; model parameter keys are unchanged.
 Inference uses no test-time augmentation by default.
 
-See [the manuscript](paper/README.md) for the method and
+See [the method guide](FieldRF/README.md) for the pipeline and
 [reference evaluation](Evaluation/README.md) for metric definitions.
 
 ## License
