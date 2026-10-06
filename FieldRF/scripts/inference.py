@@ -32,8 +32,8 @@ import yaml
 # FieldRF imports
 _FIELDRF = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_FIELDRF))
-from models.model import (
-    FieldRFModel,
+from models.model import FieldRFModel  # noqa: E402
+from utils.domains import (  # noqa: E402
     get_class_label,
     MODALITIES,
     FIELDS,

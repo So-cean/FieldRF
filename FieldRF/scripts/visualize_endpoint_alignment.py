@@ -14,7 +14,7 @@ import torch
 import torch.nn.functional as F
 
 from data.dataset import PairedVisualizationDataset
-from models.model import get_class_label
+from utils.domains import get_class_label  # noqa: E402
 from train_endpoint_aligner import multiscale_patch_coral
 from utils.visualization import (
     compute_metrics_eval,

@@ -1,0 +1,102 @@
+"""Checkpoint contracts for the decomposed FieldRF model."""
+
+from pathlib import Path
+import sys
+import tempfile
+import unittest
+
+import torch
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from models.model import FieldRFModel  # noqa: E402
+
+
+MODEL_OPTIONS = dict(
+    unet_channels=(8, 16, 16, 16),
+    num_res_blocks=(1, 1, 1, 1),
+    attention_levels=(False, False, False, False),
+    num_head_channels=(4, 4, 4, 4),
+    norm_num_groups=4,
+    feat4_channels=4,
+    conditioning_embedding_num_channels=(4, 4),
+    z_channels=1,
+    use_flash_attention=False,
+)
+
+
+class ModelLoadingTests(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.checkpoint = Path(self.directory.name) / "checkpoint.pt"
+        self.model = FieldRFModel(**MODEL_OPTIONS)
+
+    def load(self, payload, **options):
+        torch.save(payload, self.checkpoint)
+        return FieldRFModel.from_pretrained(
+            self.checkpoint, **(MODEL_OPTIONS | options)
+        )
+
+    def test_full_checkpoint_restores_ema_and_runtime_metadata(self):
+        state = self.model.state_dict()
+        ema = {
+            name: value + 0.125
+            for name, value in state.items()
+            if value.dtype.is_floating_point
+        }
+        loaded = self.load(
+            {"bridge": state, "ema": ema, "scale_factor": 0.8,
+             "num_train_timesteps": 500},
+            load_ema=True,
+        )
+        self.assertEqual(loaded.scale_factor, 0.8)
+        self.assertEqual(loaded.num_train_timesteps, 500)
+        self.assertEqual(list(state), list(loaded.state_dict()))
+        for name, value in ema.items():
+            torch.testing.assert_close(loaded.state_dict()[name], value)
+
+    def test_concat_continuation_preserves_old_channels_and_zeros_source(self):
+        state = self.model.state_dict()
+        loaded = self.load({"bridge": state}, source_injection="concat")
+        actual = loaded.state_dict()["unet.conv_in.conv.weight"]
+        torch.testing.assert_close(actual[:, :1], state["unet.conv_in.conv.weight"])
+        torch.testing.assert_close(actual[:, 1:], torch.zeros_like(actual[:, 1:]))
+
+    def test_adapter_continuation_keeps_new_residual_zero(self):
+        loaded = self.load(
+            {"bridge": self.model.state_dict()},
+            source_injection="adapter", source_adapter_channels=4,
+        )
+        source = torch.randn(1, 1, 4, 4, 4)
+        torch.testing.assert_close(
+            loaded.source_adapter(source), torch.zeros(1, 8, 4, 4, 4)
+        )
+
+    def test_full_checkpoint_rejects_missing_network_parameters(self):
+        state = dict(self.model.state_dict())
+        state.pop("unet.conv_in.conv.weight")
+        with self.assertRaisesRegex(RuntimeError, "checkpoint mismatch"):
+            self.load({"bridge": state})
+
+    def test_ema_rejects_missing_network_parameters(self):
+        state = self.model.state_dict()
+        ema = dict(state)
+        ema.pop("unet.conv_in.conv.weight")
+        with self.assertRaisesRegex(RuntimeError, "EMA checkpoint missing"):
+            self.load({"bridge": state, "ema": ema}, load_ema=True)
+
+    def test_raw_pretrained_unet_strips_ddp_prefix_and_reinitializes_labels(self):
+        raw = {
+            "module." + name: value
+            for name, value in self.model.unet.state_dict().items()
+        }
+        raw["module.class_embedding.weight"] = torch.ones(128, 32)
+        loaded = self.load({"unet_state_dict": raw})
+        for name, value in self.model.unet.state_dict().items():
+            if name != "class_embedding.weight":
+                torch.testing.assert_close(loaded.unet.state_dict()[name], value)
+        self.assertEqual(loaded.unet.class_embedding.weight.shape[0], 15)
+
+
+if __name__ == "__main__":
+    unittest.main()

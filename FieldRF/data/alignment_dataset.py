@@ -34,7 +34,7 @@ from pathlib import Path
 import torch
 
 from data.dataset import _load_feats_b2nd, _load_latent
-from models.model import get_class_label
+from utils.domains import get_class_label  # noqa: E402
 
 
 _MANIFEST_COLUMNS = {

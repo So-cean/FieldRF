@@ -1,165 +1,31 @@
-"""FieldRF: anatomy-conditioned rectified flow with MAISI UNet and ControlNet.
+"""FieldRF network assembly and velocity prediction.
 
-The network predicts data-minus-endpoint velocity along a linear RF path.
-MAISI timestep remapping and Euler/Heun integration support shared translation
-across modality and field labels. Source-latent conditioning remains optional
-so existing checkpoint architectures retain their parameter layouts.
+Training paths, numerical integration and checkpoint I/O live in dedicated
+modules. Thin model methods preserve existing training and inference entry
+points, while registered submodules retain their checkpoint parameter names.
 """
 
-import math
-import numpy as np
 import torch
 import torch.nn as nn
-from contextlib import nullcontext
-
-from monai.apps.generation.maisi.networks.diffusion_model_unet_maisi import (
-    DiffusionModelUNetMaisi,
-)
 from monai.networks.nets import ControlNet
-from monai.utils.type_conversion import convert_to_tensor
 
+from .networks import DiffusionModelUNetMaisiGradSafe, SourceLatentAdapter
+from . import checkpoint, rectified_flow, sampling
+# Retain existing helper imports for external scripts; maintained callers use
+# the defining modules directly.
+from .rectified_flow import timestep_transform
+from utils.domains import FIELDS, MODALITIES, NUM_CLASSES, get_class_label
+from utils.diagnostics import controlnet_norms, source_channel_norms
 
-# ── Timestep transform (MAISI rectified_flow.py, verbatim) ── #
-
-def timestep_transform(t, input_img_size_numel, base_img_size_numel=32768,
-                       scale=1.0, num_train_timesteps=1000, spatial_dim=3):
-    """MAISI timestep remap: resolution-driven sigmoid-like correction.
-
-    Args:
-        t: (B,) float timesteps in [0, num_train_timesteps).
-        input_img_size_numel: total voxels in the latent (e.g. 96*96*96=884736).
-        base_img_size_numel: reference voxel count (32*32*32=32768).
-        scale: scaling factor for the remap (MAISI default 1.4).
-        num_train_timesteps: max timestep (1000).
-        spatial_dim: 3 for 3D.
-    Returns:
-        new_t: (B,) transformed timesteps, same range as input.
-    """
-    t = t / num_train_timesteps  # normalize to [0, 1]
-    ratio_space = (input_img_size_numel / base_img_size_numel) ** (1.0 / spatial_dim)
-    ratio = ratio_space * scale
-    # Remap: new_t = ratio * t / (1 + (ratio - 1) * t)
-    new_t = ratio * t / (1 + (ratio - 1) * t)
-    new_t = new_t * num_train_timesteps
-    return new_t
-
-
-# ── Class label mapping (same as RF/RF) ── #
-
-MODALITIES = ["T1W", "T2W", "T2FLAIR"]
-FIELDS = ["0.1T", "1.5T", "3T", "5T", "7T"]
-NUM_CLASSES = len(MODALITIES) * len(FIELDS)  # 15
-
-
-def get_class_label(modality, field):
-    return MODALITIES.index(modality) * len(FIELDS) + FIELDS.index(field)
-
-
-# ── Grad-safe UNet wrapper (for ControlNet residual injection) ── #
-
-class DiffusionModelUNetMaisiGradSafe(DiffusionModelUNetMaisi):
-    """Out-of-place adds for down_block/mid_block residuals (autograd-safe).
-
-    The upstream MAISI UNet uses in-place ``h += residual`` which breaks
-    autograd when the residual has gradient (e.g. our ControlNet projections).
-    This override replaces them with out-of-place ``h = h + residual``.
-    """
-
-    def _apply_down_blocks(self, h, emb, context, down_block_additional_residuals):
-        down_block_res_samples = [h]
-        for downsample_block in self.down_blocks:
-            h, res_samples = downsample_block(hidden_states=h, temb=emb, context=context)
-            down_block_res_samples.extend(res_samples)
-
-        if down_block_additional_residuals is not None:
-            if len(down_block_additional_residuals) != len(down_block_res_samples):
-                raise ValueError(
-                    f"down_block_additional_residuals has {len(down_block_additional_residuals)} "
-                    f"elements but {len(down_block_res_samples)} expected."
-                )
-            # OUT-OF-PLACE add (was in-place upstream).
-            down_block_res_samples = [
-                res + add for res, add in zip(down_block_res_samples, down_block_additional_residuals)
-            ]
-        return h, down_block_res_samples
-
-    def forward(self, x, timesteps, context=None, class_labels=None,
-                spacing_tensor=None, down_block_additional_residuals=None,
-                mid_block_additional_residual=None,
-                source_additional_residual=None, **kwargs):
-        h = self.conv_in(x)
-        if source_additional_residual is not None:
-            if source_additional_residual.shape != h.shape:
-                raise ValueError(
-                    "source_additional_residual shape "
-                    f"{source_additional_residual.shape} != conv_in output {h.shape}"
-                )
-            h = h + source_additional_residual
-        emb = self._get_time_and_class_embedding(x, timesteps, class_labels)
-        emb = self._get_input_embeddings(emb, context, None, spacing_tensor)
-        h, _updated = self._apply_down_blocks(h, emb, context, down_block_additional_residuals)
-        if mid_block_additional_residual is not None:
-            h = h + mid_block_additional_residual
-        h = self._apply_up_blocks(h, emb, context, _updated)
-        h = self.out(h)
-        return convert_to_tensor(h)
-
-
-class SourceLatentAdapter(nn.Module):
-    """Inject source anatomy without expanding the pretrained UNet input.
-
-    Per-channel spatial normalization removes the easiest field/intensity
-    shortcut.  The final convolution is zero initialized, so an adapter model
-    loaded from identity RF is functionally identical to identity RF before Stage 2 updates.
-    """
-
-    def __init__(self, in_channels=4, out_channels=64, hidden_channels=16):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Conv3d(in_channels, hidden_channels, 3, padding=1),
-            nn.GroupNorm(4, hidden_channels),
-            nn.SiLU(),
-            nn.Conv3d(hidden_channels, out_channels, 3, padding=1),
-        )
-        nn.init.zeros_(self.net[-1].weight)
-        nn.init.zeros_(self.net[-1].bias)
-
-    def forward(self, z_src):
-        dims = tuple(range(2, z_src.ndim))
-        mean = z_src.mean(dim=dims, keepdim=True)
-        var = z_src.var(dim=dims, keepdim=True, unbiased=False)
-        z_src = (z_src - mean) * torch.rsqrt(var + 1e-6)
-        return self.net(z_src)
-
-
-# ── identity RF Bridge: Rectified Flow + ControlNet ── #
 
 class FieldRFModel(nn.Module):
-    """Anatomy-conditioned rectified flow with a shared UNet and ControlNet.
+    """Shared anatomy-conditioned rectified flow across MRI domains.
 
-    Architecture:
-      - identity RF UNet: 4ch conv_in for z_t, pretrained init.
-      - Legacy source-conditioned RF concat: 8ch conv_in for [z_t | z_src], with zero-init
-        source-channel weights when expanding a identity RF checkpoint.
-      - source-conditioned RF adapter: the 4ch identity RF conv_in remains intact and a zero-init source
-        residual is added after conv_in.
-      - ControlNet: monai ControlNet with a configurable conditioning pyramid.
-        Legacy Brain-ID uses 192³ via [64,64] (one stride-2); BrainID-HR uses
-        native 96³ via [64] (no spatial downsample).
-      - Random init ControlNet (DO NOT copy UNet weights).
-      - Timestep-transform applied per MAISI recipe (scale=1.4, base=32³).
-
-    Training:
-      z_t = (1 - t/T) * z_0 + (t/T) * noise   (MAISI convention)
-      v_pred = UNet(z_t, t, class, ControlNet(feat4))
-      loss = L1(v_pred, v_target) where v_target = z_0 - noise
-
-    Inference:
-      Euler ODE from noise at t=T to z_0 at t=0.
-      Deterministic, N=20 steps (configurable).
-
-    No SelfRDB residue. Stage 2 adversarial training is implemented by the
-    trainer; this module supplies the source-conditioned RF source-latent path and graft sampler.
+    Owns the MAISI UNet, Brain-ID ControlNet and optional source-latent adapter.
+    ``source_injection`` selects no source path, channel concatenation or a
+    zero-initialized residual adapter. ``forward`` predicts data-minus-endpoint
+    velocity. Training paths, inversion, sampling and loading methods delegate
+    to the modules that implement those responsibilities.
     """
 
     def __init__(
@@ -258,8 +124,6 @@ class FieldRFModel(nn.Module):
             "spacing_tensor", torch.tensor([[0.5, 0.5, 0.5]], dtype=torch.float32)
         )
 
-    # ── Noise prediction forward ── #
-
     def _unet_input(self, z_t, z_src=None):
         """Build the identity RF/source-conditioned RF main-UNet input.
 
@@ -330,78 +194,23 @@ class FieldRFModel(nn.Module):
             source_additional_residual=self._source_residual(z_t, t, z_src),
         )
 
-    # ── RF forward (for training loop) ── #
-
     def sample_train_timesteps(
         self,
         z_0,
         endpoint_focus_probability=0.0,
         endpoint_min_fraction=0.7,
     ):
-        """Sample transformed RF timesteps used by ``forward_rf``.
-
-        ``endpoint_focus_probability`` optionally replaces part of the
-        uniform raw-timestep batch with samples close to the noise endpoint.
-        The returned values have already passed through MAISI's timestep
-        transform and can be shared by paired source/target branches.
-        """
-        if not 0.0 <= endpoint_focus_probability <= 1.0:
-            raise ValueError(
-                "endpoint_focus_probability must be in [0, 1], got "
-                f"{endpoint_focus_probability}"
-            )
-        if not 0.0 <= endpoint_min_fraction < 1.0:
-            raise ValueError(
-                "endpoint_min_fraction must be in [0, 1), got "
-                f"{endpoint_min_fraction}"
-            )
-
-        batch = z_0.shape[0]
-        raw_t = torch.rand((batch,), device=z_0.device)
-        if endpoint_focus_probability > 0:
-            use_endpoint = (
-                torch.rand((batch,), device=z_0.device)
-                < endpoint_focus_probability
-            )
-            endpoint_t = endpoint_min_fraction + (
-                1.0 - endpoint_min_fraction
-            ) * torch.rand((batch,), device=z_0.device)
-            raw_t = torch.where(use_endpoint, endpoint_t, raw_t)
-        raw_t = raw_t * self.num_train_timesteps
-
-        input_img_size_numel = z_0.shape[2] * z_0.shape[3] * z_0.shape[4]
-        return timestep_transform(
-            raw_t,
-            input_img_size_numel,
-            base_img_size_numel=32768,
-            scale=1.4,
-            num_train_timesteps=self.num_train_timesteps,
-            spatial_dim=3,
+        """Sample MAISI-transformed training timesteps."""
+        return rectified_flow.sample_train_timesteps(
+            self,
+            z_0,
+            endpoint_focus_probability=endpoint_focus_probability,
+            endpoint_min_fraction=endpoint_min_fraction,
         )
 
     def build_rf_path(self, z_0, endpoint, t):
-        """Build a linear RF state and its data-minus-endpoint velocity.
-
-        Args:
-            z_0: Clean, scaled image latent.
-            endpoint: Noise or another target-compatible RF endpoint.
-            t: MAISI-transformed timestep returned by
-                :meth:`sample_train_timesteps`.
-        """
-        if endpoint.shape != z_0.shape:
-            raise ValueError(
-                f"endpoint shape {endpoint.shape} != z_0 shape {z_0.shape}"
-            )
-        if t.ndim != 1 or t.shape[0] != z_0.shape[0]:
-            raise ValueError(
-                f"t must have shape ({z_0.shape[0]},), got {tuple(t.shape)}"
-            )
-        endpoint = endpoint.to(device=z_0.device, dtype=z_0.dtype)
-        timepoints = 1.0 - t / self.num_train_timesteps
-        tp = timepoints.view(-1, 1, 1, 1, 1)
-        z_t = tp * z_0 + (1.0 - tp) * endpoint
-        v_target = z_0 - endpoint
-        return z_t, v_target
+        """Construct the RF state and data-minus-endpoint velocity."""
+        return rectified_flow.build_rf_path(self, z_0, endpoint, t)
 
     def forward_rf(
         self,
@@ -414,42 +223,18 @@ class FieldRFModel(nn.Module):
         endpoint_focus_probability=0.0,
         endpoint_min_fraction=0.7,
     ):
-        """Construct the RF path and return predicted and target velocities.
-
-        If t is None, samples uniformly with timestep_transform.
-
-        Args:
-            z_0: (B, 4, 96³) clean latent (scaled).
-            feats: list of 5 Brain-ID features.
-            class_label: (B,) target class.
-            t: optional pre-sampled, already transformed timesteps.
-            z_src: optional scaled source latent. Identity supervision leaves
-                this unset so the new source-conditioned RF channels remain zero.
-            endpoint: optional externally supplied RF endpoint. Passing the
-                same deterministic endpoint to paired source/target branches
-                establishes an explicit sample-wise coupling.
-        Returns:
-            v_pred: predicted velocity.
-            v_target: ground-truth velocity.
-        """
-        B = z_0.shape[0]
-        device = z_0.device
-
-        if t is None:
-            t = self.sample_train_timesteps(
-                z_0,
-                endpoint_focus_probability=endpoint_focus_probability,
-                endpoint_min_fraction=endpoint_min_fraction,
-            )
-
-        if endpoint is None:
-            endpoint = torch.randn_like(z_0)
-        z_t, v_target = self.build_rf_path(z_0, endpoint, t)
-
-        # Predict velocity
-        v_pred = self.forward(z_t, t, class_label, feats, z_src=z_src)
-
-        return v_pred, v_target
+        """Return predicted and target RF velocities; losses are external."""
+        return rectified_flow.forward_rf(
+            self,
+            z_0,
+            feats,
+            class_label,
+            t=t,
+            z_src=z_src,
+            endpoint=endpoint,
+            endpoint_focus_probability=endpoint_focus_probability,
+            endpoint_min_fraction=endpoint_min_fraction,
+        )
 
     def invert_to_endpoint(
         self,
@@ -461,170 +246,29 @@ class FieldRFModel(nn.Module):
         velocity_model=None,
         gradient_steps=None,
     ):
-        """Integrate a scaled image latent toward its learned RF endpoint.
-
-        This method intentionally remains differentiable. Callers that only
-        need a detached source endpoint should invoke it under
-        ``torch.no_grad()``. Short differentiable integrations can be used for
-        an optional explicit endpoint-consistency loss.
-        """
-        if n_steps < 1:
-            raise ValueError(f"n_steps must be >= 1, got {n_steps}")
-        if solver not in {"euler", "heun"}:
-            raise ValueError(f"Unsupported solver: {solver}")
-        if gradient_steps is None:
-            gradient_steps = n_steps
-        gradient_steps = int(gradient_steps)
-        if not 0 <= gradient_steps <= n_steps:
-            raise ValueError(
-                "gradient_steps must lie in [0, n_steps], got "
-                f"{gradient_steps} for n_steps={n_steps}"
-            )
-        predict_velocity = self.forward if velocity_model is None else velocity_model
-
-        batch = z_0.shape[0]
-        if isinstance(class_label, int):
-            class_label = torch.full(
-                (batch,),
-                class_label,
-                device=z_0.device,
-                dtype=torch.long,
-            )
-        else:
-            class_label = class_label.to(device=z_0.device, dtype=torch.long)
-
-        raw_schedule = torch.linspace(
-            0,
-            self.num_train_timesteps - 1,
-            n_steps + 1,
-            device=z_0.device,
-        )
-        schedule = timestep_transform(
-            raw_schedule,
-            int(np.prod(z_0.shape[2:])),
-            base_img_size_numel=32768,
-            scale=1.4,
-            num_train_timesteps=self.num_train_timesteps,
-            spatial_dim=3,
+        """Invert a scaled latent with Euler/Heun and optional gradient truncation."""
+        return sampling.invert_to_endpoint(
+            self,
+            z_0,
+            feats,
+            class_label,
+            n_steps=n_steps,
+            solver=solver,
+            velocity_model=velocity_model,
+            gradient_steps=gradient_steps,
         )
 
-        state = z_0
-        for index in range(n_steps):
-            current_t = schedule[index].expand(batch)
-            next_t = schedule[index + 1].expand(batch)
-            delta = (
-                schedule[index + 1] - schedule[index]
-            ) / self.num_train_timesteps
-            # Full deployment uses several ODE steps, but retaining every
-            # 96^3 activation is prohibitively expensive.  ``gradient_steps``
-            # implements truncated BPTT: the detached prefix follows the
-            # actual online vector field and the final steps remain
-            # differentiable.  The default preserves the historical fully
-            # differentiable behavior.
-            keep_gradient = index >= n_steps - gradient_steps
-            context = nullcontext() if keep_gradient else torch.no_grad()
-            with context:
-                velocity = predict_velocity(
-                    state,
-                    current_t,
-                    class_label,
-                    feats,
-                )
-                prediction = state - velocity * delta
-                if solver == "euler":
-                    state = prediction
-                else:
-                    next_velocity = predict_velocity(
-                        prediction,
-                        next_t,
-                        class_label,
-                        feats,
-                    )
-                    state = state - 0.5 * (velocity + next_velocity) * delta
-            if not keep_gradient:
-                state = state.detach()
-        return state
-
-    # ── Inference: Euler ODE ── #
-
-    @torch.no_grad()
     def sample_x0(self, feats, class_label, n_infer_steps=20, device=None, z_src=None):
-        """Euler ODE sampling: deterministic reverse from noise to x0.
-
-        Args:
-            feats: list of 5 Brain-ID features.
-            class_label: (B,) or int target class.
-            n_infer_steps: number of Euler steps (default 20).
-            z_src: optional UNSCALED source latent for source-conditioned RF conditioning.
-        Returns:
-            x0_pred: (B, 4, 96³) predicted target latent (UNSCALED, for VAE decode).
-        """
-        if device is None:
-            device = next(self.parameters()).device
-
-        B = feats[0].shape[0]
-        if isinstance(class_label, int):
-            class_label = torch.full((B,), class_label, device=device, dtype=torch.long)
-        else:
-            class_label = class_label.to(device)
-
-        feat4 = feats[-1].float().to(device)
-        z_src_scaled = None
-        if z_src is not None:
-            z_src_scaled = z_src.to(device).float() * self.scale_factor
-
-        # Build inference timesteps: uniform from T-1 to 0
-        # (T-1, not T, because training samples t ∈ [0, T) — querying at t=T
-        # would be out-of-distribution. The model has seen t up to ~T-1.)
-        N = n_infer_steps
-        timesteps = torch.linspace(
-            self.num_train_timesteps - 1, 0, N + 1, device=device
-        )  # [T-1, ..., 0]
-
-        # Apply timestep_transform to inference timesteps too (matching training).
-        # CRITICAL: use LATENT spatial numel (96³), NOT feat4's 192³ — the transform
-        # is a noise-schedule correction for the generation resolution, and the
-        # generation happens at the latent's 96³, not feat4's 192³. Using 192³ here
-        # would give ratio=8.4 vs training's 4.2, completely mismatching the
-        # t-distribution the model was trained on.
-        latent_shape = tuple(
-            (length + self.conditioning_downsample_factor - 1)
-            // self.conditioning_downsample_factor
-            for length in feat4.shape[-3:]
-        )
-        input_img_size_numel = int(np.prod(latent_shape))
-        timesteps = timestep_transform(
-            timesteps, input_img_size_numel,
-            base_img_size_numel=32768,
-            scale=1.4,
-            num_train_timesteps=self.num_train_timesteps,
-            spatial_dim=3,
+        """Sample from noise and return an unscaled latent under no_grad."""
+        return sampling.sample_x0(
+            self,
+            feats,
+            class_label,
+            n_infer_steps=n_infer_steps,
+            device=device,
+            z_src=z_src,
         )
 
-        # Initial noise: sample from standard normal (t=T → pure noise)
-        # At t=T: z_T ≈ noise (since timepoints ≈ 0)
-        z_t = torch.randn(B, self.z_channels, *latent_shape, device=device)
-
-        # Euler ODE: z_{t-dt} = z_t + v * dt
-        for i in range(N):
-            t_val = timesteps[i]  # scalar on device
-            t_batch = t_val.expand(B)
-
-            # Predict velocity
-            v_pred = self.forward(
-                z_t, t_batch, class_label, feats, z_src=z_src_scaled
-            )
-
-            # dt: difference to next timestep (in normalized units)
-            dt = (timesteps[i] - timesteps[i + 1]) / self.num_train_timesteps
-
-            # Euler step: z_{t-dt} = z_t + v * dt
-            z_t = z_t + v_pred * dt
-
-        # Final z_t ≈ z_0_pred (unscaled for VAE decode)
-        return z_t / self.scale_factor
-
-    @torch.no_grad()
     def sample_x0_from_endpoint(
         self,
         endpoint,
@@ -632,143 +276,28 @@ class FieldRFModel(nn.Module):
         class_label,
         n_infer_steps=20,
     ):
-        """Reverse the RF from a supplied scaled inversion endpoint.
-
-        Unlike :meth:`sample_x0`, this method does not draw random noise.  It
-        is used to compare an actual source inversion endpoint with its
-        aligned counterpart under identical Brain-ID and target-label
-        conditions.
-        """
-        if endpoint.ndim != 5:
-            raise ValueError(
-                "endpoint must have shape [B,C,H,W,D], got "
-                f"{tuple(endpoint.shape)}"
-            )
-        if n_infer_steps < 1:
-            raise ValueError(
-                f"n_infer_steps must be >= 1, got {n_infer_steps}"
-            )
-        device = endpoint.device
-        batch = endpoint.shape[0]
-        if isinstance(class_label, int):
-            class_label = torch.full(
-                (batch,),
-                class_label,
-                device=device,
-                dtype=torch.long,
-            )
-        else:
-            class_label = class_label.to(device=device, dtype=torch.long)
-
-        timesteps = torch.linspace(
-            self.num_train_timesteps - 1,
-            0,
-            n_infer_steps + 1,
-            device=device,
+        """Reverse a supplied scaled endpoint under no_grad; return an unscaled latent."""
+        return sampling.sample_x0_from_endpoint(
+            self,
+            endpoint,
+            feats,
+            class_label,
+            n_infer_steps=n_infer_steps,
         )
-        timesteps = timestep_transform(
-            timesteps,
-            int(np.prod(endpoint.shape[2:])),
-            base_img_size_numel=32768,
-            scale=1.4,
-            num_train_timesteps=self.num_train_timesteps,
-            spatial_dim=3,
-        )
-        state = endpoint
-        for index in range(n_infer_steps):
-            current_t = timesteps[index].expand(batch)
-            velocity = self.forward(
-                state,
-                current_t,
-                class_label,
-                feats,
-            )
-            delta = (
-                timesteps[index] - timesteps[index + 1]
-            ) / self.num_train_timesteps
-            state = state + velocity * delta
-        return state / self.scale_factor
-
-    # ── Training-mode generation (for Stage 2 adversarial) ── #
 
     def generate_train(self, feats, class_label, z_src, source_dropout_p=0.1,
                        t=None, n_infer_steps=1, return_diagnostics=False):
-        """Differentiable Stage-2 graft sample in scaled latent space.
-
-        Legacy ``concat`` mode retains the random-t one-forward estimator for
-        reproducibility. ``adapter`` mode mirrors deployment: it starts at pure
-        noise and performs differentiable Euler steps, while z_src enters only
-        through the adapter. This removes the old dual use of z_src as both RF
-        starting point and direct condition.
-        """
-        B = feats[0].shape[0]
-        device = feats[0].device
-        z_src_scaled = z_src.to(device).float() * self.scale_factor
-
-        z_src_cond = z_src_scaled
-        keep = torch.ones((B,), device=device, dtype=z_src_scaled.dtype)
-        if source_dropout_p > 0:
-            keep = (torch.rand((B,), device=device) >= source_dropout_p).to(z_src_scaled.dtype)
-            z_src_cond = z_src_cond * keep.view(-1, 1, 1, 1, 1)
-
-        if self.source_injection == "adapter":
-            if n_infer_steps < 1:
-                raise ValueError(f"n_infer_steps must be >=1, got {n_infer_steps}")
-            spatial_numel = int(np.prod(z_src_scaled.shape[2:]))
-            timesteps = torch.linspace(
-                self.num_train_timesteps - 1, 0, n_infer_steps + 1, device=device
-            )
-            timesteps = timestep_transform(
-                timesteps, spatial_numel,
-                base_img_size_numel=32768,
-                scale=1.4,
-                num_train_timesteps=self.num_train_timesteps,
-                spatial_dim=3,
-            )
-            z_t = torch.randn_like(z_src_scaled)
-            for i in range(n_infer_steps):
-                t_batch = timesteps[i].expand(B)
-                v_pred = self.forward(
-                    z_t, t_batch, class_label, feats, z_src=z_src_cond
-                )
-                dt = (timesteps[i] - timesteps[i + 1]) / self.num_train_timesteps
-                z_t = z_t + v_pred * dt
-            diagnostics = {
-                "source_drop_fraction": (1.0 - keep).mean().detach(),
-                "graft_start_source_fraction": z_t.new_zeros(()),
-                "graft_steps": z_t.new_tensor(float(n_infer_steps)),
-            }
-            return (z_t, diagnostics) if return_diagnostics else z_t
-
-        if t is None:
-            t = torch.rand((B,), device=device) * self.num_train_timesteps
-            spatial_numel = int(np.prod(z_src_scaled.shape[2:]))
-            t = timestep_transform(
-                t, spatial_numel,
-                base_img_size_numel=32768,
-                scale=1.4,
-                num_train_timesteps=self.num_train_timesteps,
-                spatial_dim=3,
-            )
-        else:
-            t = t.to(device=device, dtype=torch.float)
-
-        alpha = 1.0 - t / self.num_train_timesteps
-        alpha_view = alpha.view(-1, 1, 1, 1, 1)
-        noise = torch.randn_like(z_src_scaled)
-        z_t = alpha_view * z_src_scaled + (1.0 - alpha_view) * noise
-
-        v_pred = self.forward(z_t, t, class_label, feats, z_src=z_src_cond)
-        t_view = (t / self.num_train_timesteps).view(-1, 1, 1, 1, 1)
-        x0_hat = z_t + t_view * v_pred
-        diagnostics = {
-            "source_drop_fraction": (1.0 - keep).mean().detach(),
-            "graft_start_source_fraction": alpha.mean().detach(),
-            "graft_steps": x0_hat.new_ones(()),
-        }
-        return (x0_hat, diagnostics) if return_diagnostics else x0_hat
-
-    # ── Checkpoint loading ── #
+        """Generate a differentiable source-conditioned graft in scaled latent space."""
+        return sampling.generate_train(
+            self,
+            feats,
+            class_label,
+            z_src,
+            source_dropout_p=source_dropout_p,
+            t=t,
+            n_infer_steps=n_infer_steps,
+            return_diagnostics=return_diagnostics,
+        )
 
     @staticmethod
     def from_pretrained(
@@ -793,13 +322,10 @@ class FieldRFModel(nn.Module):
         load_ema=False,
         **kwargs,
     ):
-        """Load pretrained UNet (4ch conv_in intact), attach fresh ControlNet.
-
-        ControlNet is randomly initialized (DO NOT copy UNet weights).
-        This avoids the oscillation observed in RF when ControlNet was
-        initialized with copied UNet weights while the UNet was trainable.
-        """
-        bridge = FieldRFModel(
+        """Load pretrained or full RF/EMA weights with architecture adaptation."""
+        return checkpoint.load_pretrained(
+            FieldRFModel,
+            ckpt_path,
             unet_channels=unet_channels,
             num_res_blocks=num_res_blocks,
             attention_levels=attention_levels,
@@ -816,151 +342,17 @@ class FieldRFModel(nn.Module):
             source_injection=source_injection,
             source_adapter_channels=source_adapter_channels,
             use_flash_attention=use_flash_attention,
+            device=device,
+            load_ema=load_ema,
+            **kwargs,
         )
-
-        sd = torch.load(ckpt_path, map_location="cpu", weights_only=False)
-
-        # Handle Stage 1/2 training checkpoint format (full bridge state dict)
-        if "bridge" in sd:
-            raw_state = FieldRFModel._adapt_source_channels(sd["bridge"], bridge)
-            FieldRFModel._load_bridge_state(bridge, raw_state)
-            # Restore scale_factor from checkpoint (was missing — caused
-            # vis/inference scripts that use from_pretrained directly to
-            # silently use scale_factor=1.0, producing garbage VAE decodes).
-            if "scale_factor" in sd:
-                bridge.scale_factor = float(sd["scale_factor"])
-                print(f"[RF] Restored scale_factor={bridge.scale_factor:.6f} from checkpoint")
-            if "num_train_timesteps" in sd:
-                bridge.num_train_timesteps = int(sd["num_train_timesteps"])
-            if load_ema and "ema" in sd:
-                ema_state = FieldRFModel._adapt_source_channels(sd["ema"], bridge)
-                result = bridge.load_state_dict(ema_state, strict=False)
-                float_keys = {k for k, v in bridge.state_dict().items()
-                              if v.dtype.is_floating_point}
-                missing_float = [
-                    k for k in result.missing_keys
-                    if k in float_keys and not k.startswith("source_adapter.")
-                ]
-                if missing_float:
-                    raise RuntimeError(
-                        f"[RF] EMA checkpoint missing {len(missing_float)} float keys "
-                        f"(first 5: {missing_float[:5]}). "
-                        f"Checkpoint/model architecture mismatch."
-                    )
-                print(f"[RF] Loaded EMA weights for inference/vis")
-            else:
-                print(f"[RF] Loaded full bridge from training checkpoint")
-            bridge = bridge.to(device)
-            return bridge
-
-        # Handle raw pretrained format
-        if "state_dict" in sd:
-            sd = sd["state_dict"]
-        if "unet_state_dict" in sd:
-            sd = sd["unet_state_dict"]
-
-        # Strip DDP prefix
-        cleaned = {k[7:] if k.startswith("module.") else k: v for k, v in sd.items()}
-
-        # Pretrained has 128 classes; we use 15 -> reinit class_embedding
-        cleaned.pop("class_embedding.weight", None)
-
-        # conv_in stays 4ch (pretrained intact)
-        missing, unexpected = bridge.unet.load_state_dict(cleaned, strict=False)
-        missing_real = [k for k in missing if "class_embedding" not in k]
-        if missing_real:
-            print(f"[RF] UNet missing (first 5): {missing_real[:5]}")
-        if unexpected:
-            print(f"[RF] UNet unexpected (first 5): {unexpected[:5]}")
-
-        # ControlNet: random init (no copy from UNet)
-        bridge = bridge.to(device)
-        print(f"[RF] Bridge ready: in_channels={bridge.in_channels}, "
-              f"num_train_timesteps={num_train_timesteps}, "
-              f"controlnet=on (feat4 {feat4_channels}ch, "
-              f"conditioning_embedding="
-              f"{list(bridge.conditioning_embedding_num_channels)}, random init), "
-              f"Euler ODE inference")
-        return bridge
 
     @staticmethod
     def _load_bridge_state(bridge, state_dict):
-        """Load RF state, permitting only a new zero-init source adapter."""
-        result = bridge.load_state_dict(state_dict, strict=False)
-        missing = [
-            k for k in result.missing_keys
-            if not k.startswith("source_adapter.")
-        ]
-        if missing or result.unexpected_keys:
-            raise RuntimeError(
-                "[RF] Bridge checkpoint mismatch: "
-                f"missing={missing[:5]}, unexpected={result.unexpected_keys[:5]}"
-            )
-        if result.missing_keys:
-            print("[source-conditioned RF-adapter] Source adapter absent in checkpoint; kept zero initialized")
+        """Validate RF weights, allowing only an absent source adapter."""
+        return checkpoint.load_bridge_state(bridge, state_dict)
 
     @staticmethod
     def _adapt_source_channels(state_dict, bridge):
-        """Zero-expand a identity RF UNet conv_in state for fair source-conditioned RF continuation."""
-        state_dict = dict(state_dict)
-        key = "unet.conv_in.conv.weight"
-        if key not in state_dict:
-            return state_dict
-        old_weight = state_dict[key]
-        new_weight = bridge.state_dict()[key]
-        if old_weight.shape == new_weight.shape:
-            return state_dict
-        if (old_weight.shape[0] == new_weight.shape[0]
-                and old_weight.shape[1] == bridge.z_channels
-                and new_weight.shape[1] == bridge.z_channels * 2
-                and old_weight.shape[2:] == new_weight.shape[2:]):
-            expanded = torch.zeros_like(new_weight, device=old_weight.device)
-            expanded[:, :bridge.z_channels].copy_(old_weight)
-            state_dict[key] = expanded
-            print("[source-conditioned RF] Expanded UNet conv_in 4->8; z_src weights zero-initialized")
-            return state_dict
-        raise RuntimeError(
-            f"Cannot adapt {key} from {tuple(old_weight.shape)} to {tuple(new_weight.shape)}"
-        )
-
-
-# ── Diagnostic: ControlNet zero_conv norms ── #
-
-def controlnet_norms(bridge):
-    """Compact per-scale zero_conv weight norm (injection-strength proxy).
-
-    Returns a one-line string suitable for epoch logging.
-    """
-    cn = bridge.controlnet
-    parts = []
-    for k in range(4):
-        idx_start = k * 3
-        ns = []
-        for j in range(3):
-            block = cn.controlnet_down_blocks[idx_start + j]
-            w = block.conv.weight if hasattr(block, 'conv') else block.weight
-            ns.append(w.norm().item())
-        parts.append(f"s{k}=[{ns[0]:.3f},{ns[1]:.3f},{ns[2]:.3f}]")
-    mid_w = cn.controlnet_mid_block.conv.weight if hasattr(cn.controlnet_mid_block, 'conv') else cn.controlnet_mid_block.weight
-    parts.append(f"mid=[{mid_w.norm().item():.3f}]")
-    return " cn=" + " ".join(parts)
-
-
-def source_channel_norms(bridge):
-    """Report source-path norms for concat or adapter shortcut monitoring."""
-    if not bridge.use_source_latent:
-        return ""
-    if bridge.source_injection == "adapter":
-        first = bridge.source_adapter.net[0].weight.norm().item()
-        zero = bridge.source_adapter.net[-1].weight.norm().item()
-        base = bridge.unet.conv_in.conv.weight.norm().item()
-        ratio = zero / max(base, 1e-12)
-        return (
-            f" src_adapter=[first={first:.4f},out={zero:.4f},"
-            f"out/base={ratio:.4f}]"
-        )
-    weight = bridge.unet.conv_in.conv.weight
-    base_norm = weight[:, :bridge.z_channels].norm().item()
-    src_norm = weight[:, bridge.z_channels:].norm().item()
-    ratio = src_norm / max(base_norm, 1e-12)
-    return f" src_conv=[base={base_norm:.4f},src={src_norm:.4f},ratio={ratio:.4f}]"
+        """Zero-expand source channels when the requested architecture requires it."""
+        return checkpoint.adapt_source_channels(state_dict, bridge)

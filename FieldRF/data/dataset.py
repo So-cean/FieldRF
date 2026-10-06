@@ -15,7 +15,7 @@ import blosc2
 import numpy as np
 import torch
 
-from models.model import get_class_label
+from utils.domains import get_class_label  # noqa: E402
 
 # Single-threaded blosc2 per DataLoader worker to avoid oversubscription.
 blosc2.set_nthreads(1)

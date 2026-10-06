@@ -11,14 +11,23 @@ ControlNet, unpaired pretraining and paired cross-field adaptation.
 | `data/dataset.py` | Cached unpaired volumes, paired field adaptation and visualization pairs |
 | `data/volume_dataset.py` | Raw NIfTI volumes and preprocessing for cache generation |
 | `data/alignment_dataset.py` | Unpaired and synthetic endpoint-alignment datasets |
-| `models/model.py` | `FieldRFModel`, RF paths, sampling, inversion and checkpoint loading |
-| `losses.py` | RF velocity loss, spatially weighted supervision and paired latent/gradient loss |
+| `models/model.py` | `FieldRFModel`, network assembly and velocity prediction |
+| `models/networks.py` | Gradient-safe MAISI UNet and source-latent adapter |
+| `models/rectified_flow.py` | Timestep remapping, RF paths and training velocity targets |
+| `models/sampling.py` | Euler/Heun inversion, reverse sampling and differentiable graft generation |
+| `models/checkpoint.py` | Pretrained/full RF loading, EMA restoration and source-channel adaptation |
+| `models/losses.py` | RF velocity loss, spatially weighted supervision and paired latent/gradient loss |
 | `models/endpoint_aligner.py` | `EndpointAligner`, shared domain-conditioned endpoint correction |
+| `utils/domains.py` | Modality/field labels shared by data and models |
+| `utils/diagnostics.py` | ControlNet and source-path training-log diagnostics |
 | `utils/visualization.py` | VAE decoding, reference-grid metrics and rendering |
 
 Modules, class names, entry points and configuration names describe their roles.
 Experiment epochs and checkpoint filenames identify artifacts independently
-of the source-code layout.
+of the source-code layout. `FieldRFModel` retains its existing training, sampling
+and loading methods as thin delegates. The UNet, ControlNet, source adapter and
+spacing buffer retain their state-dict names, so existing weights remain usable.
+Data modules import domain labels without loading the model architecture.
 
 ## Dataset roles
 

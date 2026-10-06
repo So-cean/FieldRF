@@ -34,14 +34,11 @@ from data.dataset import (  # noqa: E402
     load_feat4,
     load_latent,
 )
-from models.model import (  # noqa: E402
-    FieldRFModel,
-    NUM_CLASSES,
-    controlnet_norms,
-    get_class_label,
-    timestep_transform,
-)
-from losses import terminal_latent_loss  # noqa: E402
+from models.model import FieldRFModel  # noqa: E402
+from utils.domains import NUM_CLASSES, get_class_label  # noqa: E402
+from utils.diagnostics import controlnet_norms  # noqa: E402
+from models.rectified_flow import timestep_transform  # noqa: E402
+from models.losses import terminal_latent_loss  # noqa: E402
 from models.endpoint_aligner import EndpointAligner  # noqa: E402
 from utils.visualization import archive_metrics_csvs  # noqa: E402
 

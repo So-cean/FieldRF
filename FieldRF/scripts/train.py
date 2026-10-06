@@ -35,11 +35,11 @@ import yaml
 
 # FieldRF imports
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from models.model import (
-    FieldRFModel, controlnet_norms, source_channel_norms,
-    get_class_label, NUM_CLASSES, MODALITIES, timestep_transform,
-)
-from losses import rectified_flow_loss, spatial_axis_overlap_weights
+from models.model import FieldRFModel  # noqa: E402
+from utils.diagnostics import controlnet_norms, source_channel_norms  # noqa: E402
+from utils.domains import get_class_label, NUM_CLASSES, MODALITIES  # noqa: E402
+from models.rectified_flow import timestep_transform  # noqa: E402
+from models.losses import rectified_flow_loss, spatial_axis_overlap_weights  # noqa: E402
 from data.dataset import MultiFieldCacheDataset, PairedVisualizationDataset
 
 try:

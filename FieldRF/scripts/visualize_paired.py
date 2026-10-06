@@ -34,7 +34,7 @@ from data.dataset import (  # noqa: E402
     load_feat4,
     load_latent,
 )
-from models.model import get_class_label  # noqa: E402
+from utils.domains import get_class_label  # noqa: E402
 from utils.visualization import (  # noqa: E402
     compute_metrics_eval,
     decode_volume_centered,

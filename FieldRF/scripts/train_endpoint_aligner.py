@@ -27,7 +27,8 @@ from torch.utils.data.distributed import DistributedSampler
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from data.alignment_dataset import UnpairedEndpointAlignmentDataset
-from models.model import FieldRFModel, NUM_CLASSES
+from models.model import FieldRFModel  # noqa: E402
+from utils.domains import NUM_CLASSES  # noqa: E402
 from models.endpoint_aligner import EndpointAligner
 from utils.endpoint_alignment import multiscale_patch_coral
 

@@ -17,7 +17,7 @@ import numpy as np
 import torch
 
 from data.dataset import PairedVisualizationDataset
-from models.model import get_class_label
+from utils.domains import get_class_label  # noqa: E402
 from utils.visualization import (
     load_vae, decode_volume_centered, load_orig_ras_384, find_nifti_path,
     eval_window_in_384, compute_metrics_eval, render_evaluation_grid, init_metrics_csv,
