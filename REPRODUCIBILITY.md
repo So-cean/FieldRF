@@ -203,6 +203,28 @@ using the same decoder were `8.65e-6`, `9.61e-6` and `9.82e-6`, respectively;
 the largest voxel difference was `0.00244`. This check reused existing caches
 and trained weights supplied outside the repository.
 
+## Checkpoint portability and preflight (2026-10-19)
+
+The expanded CPU suite passed **60 tests with 9 subtests** (58 FieldRF and
+2 submission CLI). Artifact tests cover relocation/renaming, exact aligner
+restoration, incorrect RF rejection, stale filesystem timestamps, preservation
+of original files and joint paired restoration. Preflight tests cover native
+cache headers, missing inputs/domains, geometry/labels, stage configuration
+consistency and prospective training requirements.
+
+The retained initial aligner was migrated to a new checksum-bearing copy.
+Its original file remained unchanged, and its parameters restored exactly
+with the historical working directory unavailable. The retained epoch-20
+paired checkpoint also restored its own aligner exactly without accessing
+the original initialization files. These checks exercised loading, without
+retraining or changing the model parameters.
+
+Paired-stage preflight passed on the configured three modalities, five fields
+and three prospective subjects. Full-recipe preflight also identified missing
+retrospective Brain-ID features in the checked local cache directory; those
+inputs must be generated or correctly located before restarting full training.
+See [preflight and migration instructions](docs/README.md#preflight-checks).
+
 ## Remaining limits
 
 The short run checks execution and artifact consistency on real inputs. It

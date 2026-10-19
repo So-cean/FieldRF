@@ -25,6 +25,8 @@ ControlNet, unpaired pretraining and paired cross-field adaptation.
 | `fieldrf/models/endpoint_aligner.py` | `EndpointAligner`, shared domain-conditioned endpoint correction |
 | `fieldrf/utils/domains.py` | Modality/field labels shared by data and models |
 | `fieldrf/utils/diagnostics.py` | ControlNet and source-path training-log diagnostics |
+| `fieldrf/utils/artifacts.py` | RF base checksums and portable aligner provenance |
+| `fieldrf/utils/preflight.py` | Read-only stage/configuration checks and cache-header inspection |
 | `fieldrf/utils/visualization.py` | VAE decoding, reference-grid metrics and rendering |
 
 Modules, class names, entry points and configuration names describe their roles.
@@ -91,7 +93,7 @@ augmentation is used by default.
 
 ## CPU regression tests
 
-The committed suite contains 46 tests in nine files:
+The committed suite contains 58 tests in eleven files:
 
 | File | Tests | Coverage |
 |---|---:|---|
@@ -104,6 +106,8 @@ The committed suite contains 46 tests in nine files:
 | [test_training.py](tests/test_training.py) | 4 | RF/VAE full epoch-boundary resume, frozen encoding path and complete training state |
 | [test_distributed.py](tests/test_distributed.py) | 1 | Two-rank real RF gradient averaging, adapter rollouts, VAE synchronization and resume |
 | [test_namespace.py](tests/test_namespace.py) | 1 | Installed imports coexist with unrelated top-level utils |
+| [test_artifacts.py](tests/test_artifacts.py) | 6 | Relocation, exact aligner restoration, joint paired restoration, wrong-base rejection and migration safeguards |
+| [test_preflight.py](tests/test_preflight.py) | 6 | Native cache headers, missing domains/caches, geometry, labels, stage consistency and paired split checks |
 
 From the repository root:
 

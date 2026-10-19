@@ -40,6 +40,7 @@ from fieldrf.utils.domains import (  # noqa: E402
     NUM_CLASSES,
 )
 from fieldrf.models.endpoint_aligner import EndpointAligner
+from fieldrf.utils.artifacts import validate_rf_base
 from fieldrf.data.dataset import _load_feats_b2nd, _load_latent
 from fieldrf.utils.visualization import load_vae, decode_volume_centered, find_nifti_path
 
@@ -339,6 +340,8 @@ def main():
             map_location="cpu",
             weights_only=False,
         )
+        if "base_checkpoint" in endpoint_state and "bridge" not in endpoint_state:
+            validate_rf_base(endpoint_state, args.checkpoint, root=fieldrf_root)
         endpoint_aligner, aligner_weight_source = load_endpoint_aligner(endpoint_state, device)
         endpoint_cfg = endpoint_state.get("config", {})
         inversion_steps, inversion_solver = resolve_inversion(

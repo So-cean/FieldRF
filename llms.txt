@@ -9,7 +9,7 @@ The supplied pipeline generates MAISI latent caches and Brain-ID feature caches,
 ## Documentation
 
 - [Reproduction pipeline](https://raw.githubusercontent.com/So-cean/FieldRF/main/README.md): Installation, upstream weight downloads, split layout, both cache commands, four training stages, artifact selection and inference.
-- [Setup and project questions](https://raw.githubusercontent.com/So-cean/FieldRF/main/docs/README.md): Dependencies, cache geometry, distributed training, resume and checkpoint choices.
+- [Setup and project questions](https://raw.githubusercontent.com/So-cean/FieldRF/main/docs/README.md): Dependencies, cache geometry, preflight checks, checkpoint migration, distributed training, resume and checkpoint choices.
 - [FieldRF code guide](https://raw.githubusercontent.com/So-cean/FieldRF/main/FieldRF/README.md): Module responsibilities, dataset roles and CPU test inventory.
 - [Verification record](https://raw.githubusercontent.com/So-cean/FieldRF/main/REPRODUCIBILITY.md): Tested environments, CPU/Gloo DDP and resume tests, short real-data GPU pipeline runs and retained-paper-weight inference checks. Records distinguish these checks from full benchmark reproduction and multi-GPU CUDA/NCCL validation.
 

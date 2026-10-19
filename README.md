@@ -80,6 +80,8 @@ Keep `feat_cache_name: brainid_feat`; check writer summaries for errors.
 ### 4. Train and connect the stage artifacts
 
 Run the stages in order, setting the selected artifacts in downstream configs:
+Check each stage first with `python scripts/check_pipeline.py --stage pretrain`,
+then `endpoint`, `vae` or `paired` as appropriate. See [preflight checks](docs/README.md#preflight-checks).
 
 ```bash
 python scripts/train.py --config configs/pretrain.yaml
@@ -130,7 +132,7 @@ From the repository root:
 python -m pytest -q FieldRF/tests mrix2026-cli/tests
 ```
 
-The suite passes **48 tests and 9 subtests**, including two-rank CPU/Gloo DDP
+The suite passes **60 tests and 9 subtests**, including two-rank CPU/Gloo DDP
 and epoch-boundary resume. [CI](https://github.com/So-cean/FieldRF/actions/workflows/ci.yml)
 runs on Python 3.10/3.12. [Reproducibility records](REPRODUCIBILITY.md) cover the
 real-data GPU pipeline, retained-paper-weight checks and small-run instructions.

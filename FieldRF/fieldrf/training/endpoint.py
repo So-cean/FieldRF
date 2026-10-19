@@ -26,6 +26,7 @@ from fieldrf.models.model import FieldRFModel  # noqa: E402
 from fieldrf.utils.domains import NUM_CLASSES  # noqa: E402
 from fieldrf.models.endpoint_aligner import EndpointAligner
 from fieldrf.utils.endpoint_alignment import multiscale_patch_coral
+from fieldrf.utils.artifacts import checkpoint_sha256, validate_rf_base
 
 
 def spatial_delta_loss(delta):
@@ -133,6 +134,7 @@ def run(args):
             "Set finetune_from to a trained RF Stage-1 checkpoint."
         )
     bridge = _build_bridge(cfg, base_checkpoint, device)
+    base_checkpoint_sha256 = checkpoint_sha256(base_checkpoint)
     model_cfg = align_cfg.get("model", {})
     aligner = EndpointAligner(
         endpoint_channels=4,
@@ -192,6 +194,7 @@ def run(args):
     best_validation_ssim = float("-inf")
     if args.resume:
         state = torch.load(args.resume, map_location="cpu", weights_only=False)
+        validate_rf_base(state, base_checkpoint, root=Path.cwd())
         aligner_raw.load_state_dict(state["endpoint_aligner"])
         optimizer.load_state_dict(state["optimizer"])
         scheduler.load_state_dict(state["scheduler"])
@@ -410,6 +413,7 @@ def run(args):
                     "global_step": global_step,
                     "config": cfg,
                     "base_checkpoint": str(base_checkpoint),
+                    "base_checkpoint_sha256": base_checkpoint_sha256,
                     "best_validation_ssim": best_validation_ssim,
                     "validation": validation_result,
                     "training_objective": (

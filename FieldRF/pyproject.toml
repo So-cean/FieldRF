@@ -37,6 +37,8 @@ fieldrf-vae-finetune = "fieldrf.cli.finetune_vae:main"
 fieldrf-infer = "fieldrf.cli.inference:main"
 fieldrf-cache-latents = "fieldrf.cli.cache_latents:main"
 fieldrf-cache-brainid = "fieldrf.cli.cache_brainid_feat:main"
+fieldrf-check = "fieldrf.cli.check_pipeline:main"
+fieldrf-migrate-checkpoint = "fieldrf.cli.migrate_checkpoint:main"
 
 [project.optional-dependencies]
 test = ["pytest"]

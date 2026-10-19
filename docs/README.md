@@ -101,7 +101,7 @@ python -m pip install --no-deps -e FieldRF/
 python -m pytest -q FieldRF/tests
 ```
 
-The FieldRF suite contains 46 tests in nine files, covering data pairing, RF/alignment
+The FieldRF suite contains 58 tests in eleven files, covering data pairing, RF/alignment
 losses, spatial supervision, numerical integration/autograd and checkpoint/EMA
 loading. It uses synthetic tensors, small networks and temporary cache/weight
 files. No MRI dataset, Brain-ID checkout or released model checkpoint is needed.
@@ -214,13 +214,67 @@ weights, optimizer, learning-rate plan, epoch/global step, loss balancing and
 per-rank random/data-loader state. Keep the original training recipe and rank
 count. Use `--init_ckpt` for older VAE files containing only weights.
 
+## Preflight checks
+
+From `FieldRF/`, run the checker before the corresponding operation:
+
+```bash
+python scripts/check_pipeline.py --stage cache
+python scripts/check_pipeline.py --stage pretrain
+# Run these as the preceding stages produce their checkpoints:
+python scripts/check_pipeline.py --stage endpoint
+python scripts/check_pipeline.py --stage vae
+python scripts/check_pipeline.py --stage paired
+```
+
+The default `--config-dir configs` reads all four YAMLs and checks shared data/cache
+roots, feature names, VAE encoder geometry/scale and RF/ControlNet architecture.
+It checks selected-stage weight files, RF/aligner content identity, every configured
+modality/field and required prospective subject. Raw input stems must have their
+required caches; latent headers must be `(4,96,96,96)` and Brain-ID headers must
+match the ControlNet geometry and buffer length. VAE adaptation requires latents
+and raw images; RF stages require both caches. Training and visualization splits
+are checked separately. The checker reports missing domains rather than silently
+reducing the training set.
+
+Use `--stage all` after all stage inputs exist. `--config-dir /path/to/configs`
+selects another complete recipe; `--config /path/to/stage.yaml --stage paired`
+checks only that file. Relative artifact paths use the documented `FieldRF/`
+working directory. `--report /path/to/report.json` optionally saves the findings.
+The checker exits with status 1 on errors. It reads cache/checkpoint headers using
+memory mapping and Brain-ID metadata, without decoding volumes or constructing
+networks. Full tensor integrity and numerical behavior are covered by the actual
+loaders and training/inference tests.
+
 ## Checkpoint selection and inference
 
 Follow the [stage-artifact table](../README.md#4-train-and-connect-the-stage-artifacts)
 to connect pretraining, alignment, VAE adaptation and paired training.
-The aligner's recorded RF base must resolve to the paired configuration's
-`finetune_from`. Preserve that path when relocating checkpoints; a local link
-can reproduce a historical relative directory layout.
+New endpoint-alignment checkpoints record `base_checkpoint_sha256`. Paired
+initialization, endpoint resume and unpaired-aligner inference verify the actual
+RF file content. Files can be moved or renamed while remaining byte-identical;
+the recorded base path serves as provenance. Full RF/VAE loading uses the file
+paths supplied at runtime. Joint paired resume restores RF and aligner from the
+same complete checkpoint, without reading their old initialization files.
+
+For a legacy unpaired aligner, create a portable copy while the original RF base
+is still accessible. From `FieldRF/`:
+
+```bash
+python scripts/migrate_checkpoint.py \
+  --checkpoint /old/artifacts/endpoint_aligner.pt \
+  --base-checkpoint /new/artifacts/rf.pt \
+  --legacy-root /old/FieldRF \
+  --output /new/artifacts/endpoint_aligner_portable.pt
+```
+
+The command compares the original and selected RF files, records their SHA-256
+in the new aligner copy and preserves all weights and optimizer state. Existing
+output files are refused. Set `endpoint_aligner_checkpoint` and `finetune_from`
+to the selected new files, then run the paired preflight check. A legacy file
+whose original base is unavailable and whose checksum was never recorded needs
+that original base restored for verification; matching filenames provide no
+content identity.
 
 VAE adaptation freezes the encoder, keeping the latent caches valid. Paired
 adaptation freezes the VAE and reads the cached Brain-ID features. RF,

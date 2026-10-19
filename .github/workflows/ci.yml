@@ -55,5 +55,7 @@ jobs:
           fieldrf-infer --help
           fieldrf-cache-latents --help
           fieldrf-cache-brainid --help
+          fieldrf-check --help
+          fieldrf-migrate-checkpoint --help
       - name: Run CPU regressions including two-rank DDP and resume
         run: python -m pytest -q FieldRF/tests mrix2026-cli/tests

@@ -41,6 +41,7 @@ from fieldrf.utils.visualization import archive_metrics_csvs  # noqa: E402
 
 
 from fieldrf.training.ema import EMA
+from fieldrf.utils.artifacts import validate_rf_base
 
 
 def _resolve(path):
@@ -73,20 +74,21 @@ def _build_bridge(config, checkpoint, device, load_ema):
     )
 
 
-def _load_endpoint_aligner(checkpoint, base_checkpoint, device):
-    state = torch.load(checkpoint, map_location="cpu", weights_only=False)
-    if "endpoint_aligner" not in state or "base_checkpoint" not in state:
+def _load_endpoint_aligner(checkpoint, base_checkpoint, device, *, joint_checkpoint=False):
+    state = torch.load(checkpoint, map_location="cpu", weights_only=False, mmap=True)
+    if "endpoint_aligner" not in state:
+        raise KeyError("Checkpoint must contain endpoint_aligner")
+    if not joint_checkpoint and "base_checkpoint" not in state:
         raise KeyError(
             "Endpoint alignment checkpoint must contain endpoint_aligner and "
             "base_checkpoint"
         )
-    expected_base = _resolve(state["base_checkpoint"]).resolve()
-    actual_base = _resolve(base_checkpoint).resolve()
-    if expected_base != actual_base:
-        raise ValueError(
-            "Endpoint aligner was trained for a different RF base checkpoint: "
-            f"{expected_base} != {actual_base}"
-        )
+    # A joint paired checkpoint supplies both RF and aligner from the same file.
+    # Its initialization paths are historical metadata, unnecessary for resume.
+    if joint_checkpoint and "bridge" not in state:
+        raise KeyError("Paired resume requires RF and aligner in the same checkpoint")
+    if not joint_checkpoint:
+        validate_rf_base(state, base_checkpoint, root=FIELDRF_ROOT)
     model_config = state["endpoint_aligner_config"]
     aligner = EndpointAligner(
         endpoint_channels=4,
@@ -330,9 +332,10 @@ def run(args):
         load_ema=args.resume is None and config["weight_source"] == "ema",
     )
     endpoint_aligner, endpoint_aligner_config = _load_endpoint_aligner(
-        _resolve(config["endpoint_aligner_checkpoint"]),
+        _resolve(args.resume or config["endpoint_aligner_checkpoint"]),
         config["finetune_from"],
         device,
+        joint_checkpoint=args.resume is not None,
     )
     train = config["train"]
     unet_parameters = list(bridge.unet.parameters())
