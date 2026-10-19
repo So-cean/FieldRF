@@ -3,7 +3,7 @@
 ## Scope
 
 On 2026-10-06, `So-cean/FieldRF` was checked in independent clones of remote
-`main`. The initial CPU audit started at `6634c88`. A subsequent real-data GPU
+`main`. The initial CPU audit started at `40e3f90`. A subsequent real-data GPU
 pipeline used a fresh recursive clone, the pinned public Brain-ID submodule,
 official pretrained weights and a separate, newly generated cache/output tree.
 No private development code or modified upstream source was used as a source
@@ -43,7 +43,7 @@ python -m pip install --no-deps --no-build-isolation -e Baseline/ -e mrix2026-cl
 OMP_NUM_THREADS=2 MKL_NUM_THREADS=2 python -m pytest -q FieldRF/tests mrix2026-cli/tests
 ```
 
-At `5db5262`, all **36 tests** passed (34 FieldRF and 2 submission CLI), with
+At `e144ccf`, all **36 tests** passed (34 FieldRF and 2 submission CLI), with
 4 subtests. The initial CPU audit passed 29 tests, before the seven loading/EMA
 regressions were added; its 21 source/scorer/CLI entry points passed `--help`.
 The current tests check:
@@ -112,9 +112,9 @@ The final validation ran inside the GPU allocation and passed:
 - Every output was finite, nonempty, within `[0,1]`, and preserved the source
   shape and affine (absolute affine tolerance `1e-6`).
 
-Caches were generated with source `e4a7c8b`; corrected pretraining, alignment
-and VAE adaptation ran at `d9af9ee`. The final complete paired epoch,
-both inference branches and CPU regression suite ran at `5db5262`.
+Caches were generated with source `350def9`; corrected pretraining, alignment
+and VAE adaptation ran at `917539d`. The final complete paired epoch,
+both inference branches and CPU regression suite ran at `e144ccf`.
 The GPU job completed successfully after the final checks. Earlier partial
 initialization runs were discarded from the accepted result and their local
 artifacts retained separately. No original experiment caches were reused.
@@ -189,7 +189,7 @@ Keep smoke artifacts separate from the full experiment.
 
 ## Retained paper checkpoint validation (2026-10-19)
 
-Release `dda305c` strictly loaded the retained epoch-20 paired best and latest
+Release `bbc285c` strictly loaded the retained epoch-20 paired best and latest
 RF checkpoints, epoch-90 pretraining RF, initial endpoint aligner and epoch-1
 adapted VAE on one V100S 32GB. The official RF/VAE hashes matched their submission
 manifest; the best RF export equaled the latest checkpoint's EMA. Historical
