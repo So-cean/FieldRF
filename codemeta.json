@@ -1,0 +1,58 @@
+{
+  "@context": [
+    "https://w3id.org/codemeta/3.0",
+    {"@vocab": "http://schema.org/"}
+  ],
+  "@type": "SoftwareSourceCode",
+  "@id": "https://github.com/So-cean/FieldRF",
+  "name": "FieldRF",
+  "description": "Anatomy-conditioned 3D rectified flow for within-modality cross-field MRI harmonization. One shared model covers T1W, T2W and T2FLAIR at 0.1T, 1.5T, 3T, 5T and 7T using MAISI latent volumes and Brain-ID anatomy features.",
+  "codeRepository": "https://github.com/So-cean/FieldRF",
+  "url": "https://github.com/So-cean/FieldRF",
+  "license": "https://spdx.org/licenses/MIT",
+  "version": "0.1.0",
+  "programmingLanguage": "Python",
+  "runtimePlatform": "Python >=3.10; hardware-compatible PyTorch and torchvision",
+  "keywords": ["mri", "mri-harmonization", "rectified-flow"],
+  "author": [
+    {"@type": "Person", "givenName": "Haiyu", "familyName": "Song"},
+    {"@type": "Person", "givenName": "Lei", "familyName": "Xiang"},
+    {"@type": "Person", "givenName": "Zongjian", "familyName": "Yang"},
+    {"@type": "Person", "givenName": "Yang", "familyName": "Wu"},
+    {"@type": "Person", "givenName": "Dinggang", "familyName": "Shen"},
+    {"@type": "Person", "givenName": "Qian", "familyName": "Wang"}
+  ],
+  "softwareHelp": {
+    "@type": "CreativeWork",
+    "url": "https://github.com/So-cean/FieldRF/blob/main/README.md"
+  },
+  "issueTracker": "https://github.com/So-cean/FieldRF/issues",
+  "relatedLink": [
+    "https://github.com/So-cean/FieldRF/blob/main/REPRODUCIBILITY.md",
+    "https://github.com/So-cean/FieldRF/blob/main/REFERENCES.md",
+    "https://github.com/So-cean/FieldRF/blob/main/FieldRF/pyproject.toml",
+    "https://github.com/MRIxFields/MRIxFields2026"
+  ],
+  "citation": {
+    "@type": "ScholarlyArticle",
+    "@id": "https://papers.miccai.org/miccai-2026-sat/MRIxFields2026_026.html",
+    "name": "FieldRF: Anatomy-Conditioned 3D Rectified Flow for Unified Cross-Field MRI Harmonization",
+    "url": "https://papers.miccai.org/miccai-2026-sat/MRIxFields2026_026.html",
+    "datePublished": "2026",
+    "author": [
+      {"@type": "Person", "givenName": "Haiyu", "familyName": "Song"},
+      {"@type": "Person", "givenName": "Lei", "familyName": "Xiang"},
+      {"@type": "Person", "givenName": "Zongjian", "familyName": "Yang"},
+      {"@type": "Person", "givenName": "Yang", "familyName": "Wu"},
+      {"@type": "Person", "givenName": "Dinggang", "familyName": "Shen"},
+      {"@type": "Person", "givenName": "Qian", "familyName": "Wang"}
+    ],
+    "publisher": {"@type": "Organization", "name": "Springer Nature Switzerland"},
+    "isPartOf": {
+      "@type": "PublicationVolume",
+      "name": "Medical Image Computing and Computer Assisted Intervention -- MICCAI 2026 Workshops and Challenges",
+      "volumeNumber": "17274",
+      "isPartOf": {"@type": "BookSeries", "name": "Lecture Notes in Computer Science"}
+    }
+  }
+}

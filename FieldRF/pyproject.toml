@@ -6,7 +6,9 @@ build-backend = "setuptools.build_meta"
 name = "mrixfields-fieldrf"
 version = "0.1.0"
 description = "FieldRF — Anatomy-Conditioned 3D Rectified Flow for Cross-Field MRI Harmonization"
+readme = "README.md"
 requires-python = ">=3.10"
+keywords = ["mri", "mri-harmonization", "rectified-flow"]
 dependencies = [
     "torch",
     "torchvision",
@@ -20,6 +22,12 @@ dependencies = [
     "matplotlib",
     "scikit-image",
 ]
+
+[project.urls]
+Repository = "https://github.com/So-cean/FieldRF"
+Documentation = "https://github.com/So-cean/FieldRF/blob/main/README.md"
+Paper = "https://papers.miccai.org/miccai-2026-sat/MRIxFields2026_026.html"
+Issues = "https://github.com/So-cean/FieldRF/issues"
 
 [project.scripts]
 fieldrf-pretrain = "fieldrf.cli.train:main"

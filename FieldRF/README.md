@@ -101,7 +101,6 @@ The committed suite contains 46 tests in nine files:
 | [test_spatial_loss.py](tests/test_spatial_loss.py) | 3 | Fractional evaluation-slab weights and weighted L1 supervision |
 | [test_model_loading.py](tests/test_model_loading.py) | 16 | Full/EMA and raw UNet loading, strict VAE restoration, source adaptation, invalid checkpoints and inversion configuration |
 | [test_sampling.py](tests/test_sampling.py) | 4 | Euler/Heun direction, latent scaling, gradient propagation and deterministic endpoint reversal |
-
 | [test_training.py](tests/test_training.py) | 4 | RF/VAE full epoch-boundary resume, frozen encoding path and complete training state |
 | [test_distributed.py](tests/test_distributed.py) | 1 | Two-rank real RF gradient averaging, adapter rollouts, VAE synchronization and resume |
 | [test_namespace.py](tests/test_namespace.py) | 1 | Installed imports coexist with unrelated top-level utils |
@@ -109,7 +108,8 @@ The committed suite contains 46 tests in nine files:
 From the repository root:
 
 ```bash
-python -m pip install -r requirements.txt
+python -m pip install --upgrade 'pip>=25.3'
+python -m pip install -r requirements.txt --build-constraint build-constraints.txt
 python -m pip install --no-deps -e FieldRF/
 python -m pytest -q FieldRF/tests
 ```

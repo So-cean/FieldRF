@@ -1,0 +1,29 @@
+# FieldRF
+
+> Anatomy-conditioned 3D rectified flow for within-modality cross-field MRI harmonization. One shared model covers T1W, T2W and T2FLAIR at 0.1T, 1.5T, 3T, 5T and 7T.
+
+Repository: https://github.com/So-cean/FieldRF. Python package: `mrixfields-fieldrf`; import namespace: `fieldrf`. Code license: MIT.
+
+The supplied pipeline generates MAISI latent caches and Brain-ID feature caches, then performs unpaired RF pretraining, endpoint alignment, VAE decoder adaptation and paired RF adaptation. Inference reads both caches and the raw source image grid to produce target-field NIfTI volumes. The official benchmark supplies the data splits. Upstream pretrained weights are downloaded separately; trained FieldRF checkpoints are produced by the training recipe.
+
+## Documentation
+
+- [Reproduction pipeline](https://raw.githubusercontent.com/So-cean/FieldRF/main/README.md): Installation, upstream weight downloads, split layout, both cache commands, four training stages, artifact selection and inference.
+- [Setup and project questions](https://raw.githubusercontent.com/So-cean/FieldRF/main/docs/README.md): Dependencies, cache geometry, distributed training, resume and checkpoint choices.
+- [FieldRF code guide](https://raw.githubusercontent.com/So-cean/FieldRF/main/FieldRF/README.md): Module responsibilities, dataset roles and CPU test inventory.
+- [Verification record](https://raw.githubusercontent.com/So-cean/FieldRF/main/REPRODUCIBILITY.md): Tested environments, CPU/Gloo DDP and resume tests, short real-data GPU pipeline runs and retained-paper-weight inference checks. Records distinguish these checks from full benchmark reproduction and multi-GPU CUDA/NCCL validation.
+
+## Paper and citation
+
+- [FieldRF paper](https://papers.miccai.org/miccai-2026-sat/MRIxFields2026_026.html): Author list, abstract and proceedings citation for MICCAI 2026 Workshops and Challenges, LNCS 17274, Springer Nature Switzerland.
+- [Paper PDF](https://papers.miccai.org/miccai-2026-sat/paper/MRIxFields2026_026.pdf): Method and experimental results.
+- [Citation metadata](https://raw.githubusercontent.com/So-cean/FieldRF/main/CITATION.cff): Preferred conference-paper citation, including authors, venue, volume, publisher and year.
+- [Software metadata](https://raw.githubusercontent.com/So-cean/FieldRF/main/codemeta.json): Machine-readable CodeMeta/Schema.org software identity and associated paper.
+- [Related project references](https://raw.githubusercontent.com/So-cean/FieldRF/main/REFERENCES.md): MRIxFields2026, MONAI, Brain-ID, MAISI/MAISI-v2 and comparison-method citations.
+
+## Optional
+
+- [Official MRIxFields2026 benchmark](https://github.com/MRIxFields/MRIxFields2026): Dataset access, official split definitions and benchmark instructions.
+- [Comparison baselines](https://raw.githubusercontent.com/So-cean/FieldRF/main/Baseline/README.md): Independent baseline implementations and configuration instructions.
+- [Reference evaluation](https://raw.githubusercontent.com/So-cean/FieldRF/main/Evaluation/README.md): Benchmark metric definitions and evaluation usage.
+- [Submission CLI](https://raw.githubusercontent.com/So-cean/FieldRF/main/mrix2026-cli/README.md): Segmentation, submission construction and ZIP packaging.

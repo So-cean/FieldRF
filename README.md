@@ -1,14 +1,25 @@
 # FieldRF
 
-Anatomy-conditioned 3D rectified flow for cross-field MRI harmonization. One
-shared model handles **T1W, T2W, T2FLAIR** across **0.1T, 1.5T, 3T, 5T, 7T**.
+FieldRF is an anatomy-conditioned 3D rectified flow method for cross-field MRI
+harmonization. One shared model translates volumes between field strengths
+within each modality: **T1W, T2W, T2FLAIR** across **0.1T, 1.5T, 3T, 5T, 7T**.
 
 [Paper (MICCAI 2026)](https://papers.miccai.org/miccai-2026-sat/paper/MRIxFields2026_026.pdf) ·
 [Code guide](FieldRF/README.md) · [Setup](docs/README.md) ·
 [Baselines](Baseline/README.md) · [Evaluation](Evaluation/README.md) ·
 [Submission](mrix2026-cli/README.md)
 
-![FieldRF pipeline](assets/fieldrf_pipeline.svg)
+![FieldRF pipeline for anatomy-conditioned volumetric MRI harmonization](assets/fieldrf_pipeline.svg)
+
+| Project facts | Details |
+|---|---|
+| Input → output | Source MRI volume and target field → target-field NIfTI volume on the source image grid |
+| Conditioning | Cached MAISI latents, frozen Brain-ID anatomy features and modality/field labels |
+| Training | Unpaired RF pretraining, endpoint alignment, VAE decoder adaptation, then paired RF adaptation |
+| Artifacts | Official dataset and upstream weights are obtained separately; train FieldRF checkpoints with the recipe below |
+
+[Project questions](docs/README.md#project-questions) · [Text index](llms.txt) ·
+[Software metadata](codemeta.json)
 
 ## Reproduction pipeline
 
@@ -130,7 +141,8 @@ real-data GPU pipeline, retained-paper-weight checks and small-run instructions.
 
 ## Citation
 
-Please cite FieldRF, presented at the MRIxFields2026 satellite event at MICCAI 2026:
+Please cite FieldRF, presented at the MRIxFields2026 satellite event at MICCAI 2026.
+[CITATION.cff](CITATION.cff) provides the machine-readable conference citation:
 
 ```bibtex
 @inproceedings{SonHai_FieldRF_MICCAISAT2026,

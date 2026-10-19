@@ -1,5 +1,52 @@
 # Setup and reproducibility
 
+## Project questions
+
+### What does FieldRF translate?
+
+FieldRF translates MRI volumes between field strengths within the same modality.
+One shared 3D rectified flow model covers T1W, T2W and T2FLAIR at 0.1T, 1.5T,
+3T, 5T and 7T. Brain-ID features condition anatomy; modality and field labels
+specify the requested appearance. The output is a NIfTI volume on the source
+image grid. The [paper](https://papers.miccai.org/miccai-2026-sat/MRIxFields2026_026.html)
+describes the method; the [code guide](../FieldRF/README.md#code-layout) maps its implementation.
+
+### Are Brain-ID and both caches required?
+
+The supplied configurations use MAISI latent caches and Brain-ID feature caches
+during training and inference. Generate both for each required split with the
+[cache commands](../README.md#3-generate-both-caches-for-every-required-split).
+Brain-ID source and pretrained weights are needed for feature extraction;
+subsequent stages read the saved features. Inference also reads raw source
+volumes to restore their image grids.
+
+### Where do the data splits and trained weights come from?
+
+Use the dataset and split definitions provided by the
+[official MRIxFields2026 benchmark](https://github.com/MRIxFields/MRIxFields2026).
+The [reproduction pipeline](../README.md#reproduction-pipeline) lists the upstream
+MAISI/Brain-ID weight downloads and trains the FieldRF stage checkpoints.
+FieldRF checkpoint reproduction currently requires running these training stages.
+The [artifact table](../README.md#4-train-and-connect-the-stage-artifacts) specifies
+how the selected training outputs connect to later stages.
+
+### What has been verified?
+
+The [verification record](../REPRODUCIBILITY.md) separates CPU regression tests,
+short real-data GPU runs of the full pipeline, and retained-paper-checkpoint
+loading/inference checks. CPU/Gloo tests cover two-rank DDP and RF/VAE resume.
+Multi-GPU CUDA/NCCL execution and full benchmark metric reproduction remain
+outside that recorded validation scope.
+
+### Where are project and citation metadata?
+
+[CITATION.cff](../CITATION.cff) identifies the preferred conference-paper citation,
+including its authors, proceedings, publisher and year.
+[codemeta.json](../codemeta.json) describes the software and its paper using
+CodeMeta/Schema.org. [llms.txt](../llms.txt) is a short text index linking the
+setup, method, evidence and references. Python package metadata links back to
+this repository, the documentation, the paper and the issue tracker.
+
 ## Python dependencies
 
 Use Python 3.10 or later. Configure PyTorch and torchvision for your hardware

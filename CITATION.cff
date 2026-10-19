@@ -1,0 +1,51 @@
+cff-version: 1.2.0
+message: "If you use FieldRF, please cite the conference paper in preferred-citation."
+type: software
+title: "FieldRF: Anatomy-Conditioned 3D Rectified Flow for Unified Cross-Field MRI Harmonization"
+abstract: >-
+  Anatomy-conditioned volumetric rectified flow for within-modality cross-field
+  MRI harmonization. One shared model covers T1W, T2W and T2FLAIR across 0.1T,
+  1.5T, 3T, 5T and 7T using MAISI latents and Brain-ID anatomy features.
+authors:
+  - family-names: Song
+    given-names: Haiyu
+  - family-names: Xiang
+    given-names: Lei
+  - family-names: Yang
+    given-names: Zongjian
+  - family-names: Wu
+    given-names: Yang
+  - family-names: Shen
+    given-names: Dinggang
+  - family-names: Wang
+    given-names: Qian
+version: "0.1.0"
+license: MIT
+repository-code: "https://github.com/So-cean/FieldRF"
+url: "https://github.com/So-cean/FieldRF"
+keywords:
+  - mri
+  - mri-harmonization
+  - rectified-flow
+preferred-citation:
+  type: conference-paper
+  title: "FieldRF: Anatomy-Conditioned 3D Rectified Flow for Unified Cross-Field MRI Harmonization"
+  authors:
+    - family-names: Song
+      given-names: Haiyu
+    - family-names: Xiang
+      given-names: Lei
+    - family-names: Yang
+      given-names: Zongjian
+    - family-names: Wu
+      given-names: Yang
+    - family-names: Shen
+      given-names: Dinggang
+    - family-names: Wang
+      given-names: Qian
+  collection-title: "Medical Image Computing and Computer Assisted Intervention -- MICCAI 2026 Workshops and Challenges"
+  volume: "LNCS 17274"
+  publisher:
+    name: Springer Nature Switzerland
+  year: 2026
+  url: "https://papers.miccai.org/miccai-2026-sat/MRIxFields2026_026.html"
