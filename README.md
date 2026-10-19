@@ -120,6 +120,9 @@ python scripts/inference.py \
 ```
 
 Inference uses both caches and source MRI grids, with TTA set to none.
+Task 1 defaults to the four lower fields → 7T; Task 2 defaults to 0.1T →
+the four higher fields; Task 3 covers all 20 directed non-identity field pairs.
+Use `--source_fields` and `--target_fields` to select a subset.
 See [checkpoint selection](docs/README.md#checkpoint-selection-and-inference)
 for best-checkpoint and source-transport options, and the
 [submission guide](mrix2026-cli/README.md) for packaging.
@@ -132,7 +135,7 @@ From the repository root:
 python -m pytest -q FieldRF/tests mrix2026-cli/tests
 ```
 
-The suite passes **60 tests and 9 subtests**, including two-rank CPU/Gloo DDP
+The suite passes **61 tests and 9 subtests**, including two-rank CPU/Gloo DDP
 and epoch-boundary resume. [CI](https://github.com/So-cean/FieldRF/actions/workflows/ci.yml)
 runs on Python 3.10/3.12. [Reproducibility records](REPRODUCIBILITY.md) cover the
 real-data GPU pipeline, retained-paper-weight checks and small-run instructions.

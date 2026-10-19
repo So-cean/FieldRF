@@ -51,6 +51,24 @@ from monai.transforms import (
 from nibabel.orientations import io_orientation, axcodes2ornt, ornt_transform, apply_orientation
 
 
+def resolve_task_fields(task, source_fields=None, target_fields=None, target_field=None):
+    """Choose the official task sweep while retaining explicit field subsets."""
+    if task == "task1":
+        default_sources, default_targets = FIELDS[:-1], ["7T"]
+    elif task == "task2":
+        default_sources, default_targets = ["0.1T"], FIELDS[1:]
+    elif task == "task3":
+        default_sources, default_targets = FIELDS, FIELDS
+    else:
+        raise ValueError(f"Unknown inference task: {task}")
+    sources = list(source_fields or default_sources)
+    targets = list(target_fields or (
+        [target_field] if target_field is not None and task != "task3"
+        else default_targets
+    ))
+    return sources, targets
+
+
 def load_endpoint_aligner(checkpoint, device):
     """Restore the paired EMA aligner, or the selected legacy/best weights."""
     options = checkpoint.get("endpoint_aligner_config", {})
@@ -191,8 +209,8 @@ def main():
                         choices=["Training_prospective", "Validating_prospective"])
     parser.add_argument("--source_fields", nargs="+", choices=FIELDS, default=None,
                         help="Source fields to process.")
-    parser.add_argument("--target_field", default="7T",
-                        help="Target field (always 7T for task1).")
+    parser.add_argument("--target_field", choices=FIELDS, default=None,
+                        help="Single target override for Task 1/2; defaults: Task 1=7T, Task 2=all higher fields.")
     parser.add_argument(
         "--target_fields",
         nargs="+",
@@ -200,7 +218,7 @@ def main():
         default=None,
         help=(
             "Optional target-field subset. Task 3 defaults to all five "
-            "fields; other tasks default to --target_field."
+            "fields; Task 1 defaults to 7T and Task 2 to all higher fields."
         ),
     )
     parser.add_argument("--output_dir", default=None,
@@ -246,12 +264,9 @@ def main():
     amp_dtype = getattr(torch, sw_cfg.get("amp_dtype", "float16"))
     n_infer = args.n_infer_steps or cfg.get("inference", {}).get("n_infer_steps", 20)
     scale_factor = float(cfg["vae"]["scale_factor"])
-    if args.task == "task3":
-        source_fields = list(args.source_fields or FIELDS)
-        target_fields = list(args.target_fields or FIELDS)
-    else:
-        source_fields = args.source_fields or ["0.1T", "1.5T", "3T", "5T"]
-        target_fields = list(args.target_fields or [args.target_field])
+    source_fields, target_fields = resolve_task_fields(
+        args.task, args.source_fields, args.target_fields, args.target_field
+    )
     cache_root = data_cfg["cache_root"]
     data_root = data_cfg["data_root"]
     modalities = args.modalities or data_cfg.get("modalities", [data_cfg.get("modality", "T1W")])

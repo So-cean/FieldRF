@@ -119,8 +119,9 @@ The GPU job completed successfully after the final checks. Earlier partial
 initialization runs were discarded from the accepted result and their local
 artifacts retained separately. No original experiment caches were reused.
 
-The [homepage README](README.md#reproduction-pipeline) includes both the full
-recipe and instructions for an isolated small-data check. The smoke run changed
+The [homepage README](README.md#reproduction-pipeline) provides the full recipe;
+the [small-data instructions](#run-an-isolated-small-data-check) describe the
+isolated check. The smoke run changed
 input/output paths, subject count, epoch count, workers and diagnostic frequency;
 it retained full network widths, native image/cache sizes and training losses.
 
@@ -224,6 +225,16 @@ and three prospective subjects. Full-recipe preflight also identified missing
 retrospective Brain-ID features in the checked local cache directory; those
 inputs must be generated or correctly located before restarting full training.
 See [preflight and migration instructions](docs/README.md#preflight-checks).
+
+## Release review (2026-10-20)
+
+A fresh recursive clone passed **61 tests with 9 subtests** after correcting the
+Task 2 inference defaults. Task 1 selects the four lower fields to 7T; Task 2
+selects 0.1T to the four higher fields; Task 3 selects all 20 directed
+non-identity pairs. Explicit source/target subsets remain available. This
+review reran CPU regressions, including two-rank Gloo DDP and resume, and
+checked source syntax, documentation links and the pinned Brain-ID checkout.
+It did not rerun full training or benchmark evaluation.
 
 ## Remaining limits
 

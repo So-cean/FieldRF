@@ -93,7 +93,7 @@ augmentation is used by default.
 
 ## CPU regression tests
 
-The committed suite contains 58 tests in eleven files:
+The committed suite contains 59 tests in eleven files:
 
 | File | Tests | Coverage |
 |---|---:|---|
@@ -101,7 +101,7 @@ The committed suite contains 58 tests in eleven files:
 | [test_alignment.py](tests/test_alignment.py) | 8 | Unpaired reference sampling, endpoint losses, RF paths and truncated inversion |
 | [test_paired_dataset.py](tests/test_paired_dataset.py) | 3 | Same-subject/modality pairing, domain completeness and cross-field record counts |
 | [test_spatial_loss.py](tests/test_spatial_loss.py) | 3 | Fractional evaluation-slab weights and weighted L1 supervision |
-| [test_model_loading.py](tests/test_model_loading.py) | 16 | Full/EMA and raw UNet loading, strict VAE restoration, source adaptation, invalid checkpoints and inversion configuration |
+| [test_model_loading.py](tests/test_model_loading.py) | 17 | Full/EMA and raw UNet loading, strict VAE restoration, source adaptation, invalid checkpoints, inversion configuration and task-specific inference sweeps |
 | [test_sampling.py](tests/test_sampling.py) | 4 | Euler/Heun direction, latent scaling, gradient propagation and deterministic endpoint reversal |
 | [test_training.py](tests/test_training.py) | 4 | RF/VAE full epoch-boundary resume, frozen encoding path and complete training state |
 | [test_distributed.py](tests/test_distributed.py) | 1 | Two-rank real RF gradient averaging, adapter rollouts, VAE synchronization and resume |

@@ -10,7 +10,7 @@ import torch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from fieldrf.models.model import FieldRFModel  # noqa: E402
 from fieldrf.models.endpoint_aligner import EndpointAligner
-from fieldrf.cli.inference import load_endpoint_aligner, resolve_inversion
+from fieldrf.cli.inference import load_endpoint_aligner, resolve_inversion, resolve_task_fields
 from fieldrf.models.checkpoint import load_vae_checkpoint
 
 
@@ -28,6 +28,25 @@ MODEL_OPTIONS = dict(
 
 
 class ModelLoadingTests(unittest.TestCase):
+    def test_inference_sweeps_follow_task_definitions_and_explicit_subsets(self):
+        fields = ["0.1T", "1.5T", "3T", "5T", "7T"]
+        self.assertEqual(resolve_task_fields("task1"), (fields[:-1], ["7T"]))
+        self.assertEqual(resolve_task_fields("task2"), (["0.1T"], fields[1:]))
+        sources, targets = resolve_task_fields("task3")
+        self.assertEqual((sources, targets), (fields, fields))
+        self.assertEqual(sum(source != target for source in sources for target in targets), 20)
+        self.assertEqual(resolve_task_fields("task2", target_field="3T"), (["0.1T"], ["3T"]))
+        self.assertEqual(
+            resolve_task_fields("task3", source_fields=["3T"], target_fields=["7T"]),
+            (["3T"], ["7T"]),
+        )
+        self.assertEqual(
+            resolve_task_fields("task2", target_fields=["1.5T", "5T"], target_field="7T"),
+            (["0.1T"], ["1.5T", "5T"]),
+        )
+        with self.assertRaisesRegex(ValueError, "Unknown inference task"):
+            resolve_task_fields("unknown")
+
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)

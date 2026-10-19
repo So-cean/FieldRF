@@ -16,15 +16,17 @@ and the baseline inference scripts.
 
 ## Input and output layout
 
-Inference sweeps use source-field filenames:
+Inference sweeps identify the translation in the directory name. FieldRF writes
+target-field filenames:
 
 ```text
 predictions/
   task1_0.1T_to_7T_T1W/<method>/<mode>/<epoch>/
-    P_T1W_0.1T_0007.nii.gz
+    P_T1W_7T_0007.nii.gz
 ```
 
-The builder renames source tags to the target field and creates:
+Baseline outputs may retain source-field tags. The builder reads subject IDs
+from either form and writes the target-field tag:
 
 ```text
 submission/task1/

@@ -7,9 +7,7 @@ Official evaluation code for the MRIxFields2026 challenge.
 Metric evaluation and SynthSeg segmentation use separate environments. See
 [dependency setup](../docs/README.md#python-dependencies) for the metric environment.
 
-```bash
-conda activate mf  # Evaluation/evaluate.py
-```
+Run `Evaluation/evaluate.py` in the Python environment configured by that setup.
 
 ## SynthSeg Setup
 
@@ -21,7 +19,7 @@ conda env create -f Evaluation/environment_synthseg.yml
 conda activate synthseg
 ```
 
-On the MRIxFields cluster, install the supplied activation hooks so the
+For a GPU installation, install the supplied activation hooks so the
 environment's CUDA 12.2/cuDNN libraries take precedence over CUDA paths inherited
 from FreeSurfer or the login shell:
 
@@ -157,10 +155,10 @@ python Evaluation/evaluate.py \
 
 ## Dependencies
 
-Metric dependencies are included in the `mf` environment. The standalone
+Metric dependencies are included in the root `requirements.txt`. The standalone
 segmentation dependencies are pinned in `Evaluation/environment_synthseg.yml`:
 
 ```text
-mf:               numpy, scipy, scikit-image, torch, lpips, nibabel
+metric environment: numpy, scipy, scikit-image, torch, lpips, nibabel
 synthseg:         tensorflow==2.15.1, keras==2.15.0, nibabel
 ```
