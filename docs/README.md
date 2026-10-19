@@ -103,3 +103,93 @@ or [Baseline](../Baseline/README.md) for comparison methods.
 Use [Evaluation](../Evaluation/README.md) for reference metrics and
 [Submission](../Submission/README.md) for validation packaging.
 Original projects and citation instructions are listed in [REFERENCES.md](../REFERENCES.md).
+
+## Pretrained artifacts
+
+The [homepage](../README.md#1-obtain-source-dependencies-and-pretrained-weights)
+links the exact Brain-ID, MAISI VAE and brain-RF weight revisions used by the
+recipe. Brain-ID source is pinned at
+[`5d8a2d3`](https://github.com/jhuldr/Brain-ID/tree/5d8a2d3eef507180b0cbff4cfe418cdfc5c55253).
+The linked MAISI releases provide these SHA-256 checksums:
+
+```text
+1f8a7a056d0ebc00486edc43c26768bf1c12eaa6df9dd172e34598003be95eb3  autoencoder_v1.pt
+b49aa3162ff94b1852f81e520ed4165c5656000ba176c033063c35350b3305e9  diff_unet_3d_rflow-mr-brain_v0.pt
+```
+
+The RF loader detects the pretrained UNet architecture and loads its complete
+weights, replacing the original domain embedding with the MRI-domain embedding.
+
+## Cache format
+
+Generate both caches for every required volume using the
+[homepage commands](../README.md#3-generate-both-caches-for-every-required-split).
+The supplied three-modality, five-field recipe uses:
+
+| Split | Consumer |
+|---|---|
+| `Training_retrospective` | RF pretraining, endpoint alignment and VAE adaptation |
+| `Training_prospective` | Paired RF adaptation and training diagnostics |
+| `Validating_prospective` | VAE validation and inference |
+
+A preprocessed `384³` image yields a `(4,96,96,96)` MAISI latent. Brain-ID
+processes the image at `192³` in `[0,1]`. The configured `[64,64]` ControlNet
+requires native `(64,192,192,192)` `feat4`, with `feat4_pool=1`. Each input stem
+has these two files:
+
+```text
+<cache_root>/<split>/latent/<modality>/<field>/<stem>.pt
+<cache_root>/<split>/brainid_feat/<modality>/<field>/<stem>.b2nd
+```
+
+The writers skip existing outputs. Changing feature geometry requires cache
+regeneration with `--overwrite`. Check the summaries, including Brain-ID's
+`errors` count. The writers' `--help` lists modality, field and overwrite controls.
+Training and inference use the caches; Brain-ID runs during feature extraction.
+
+## Distributed training and resume
+
+RF pretraining, endpoint alignment and VAE adaptation support native PyTorch
+DDP. YAML batch sizes are per device. From `FieldRF/`:
+
+```bash
+torchrun --standalone --nproc_per_node=2 scripts/train.py --config configs/pretrain.yaml --dist
+torchrun --standalone --nproc_per_node=2 scripts/finetune_vae.py --config configs/vae_finetune.yaml --dist
+```
+
+Paired RF adaptation runs on a single CUDA device. The committed DDP regressions
+use CPU/Gloo; the [verification record](../REPRODUCIBILITY.md#remaining-limits)
+states the tested execution scope.
+
+Resume RF pretraining with `--resume <fieldrf_epochN.pt>` and VAE adaptation
+with `--resume_ckpt <vae_finetune_epochN.pt>`. New VAE epoch checkpoints restore
+weights, optimizer, learning-rate plan, epoch/global step, loss balancing and
+per-rank random/data-loader state. Keep the original training recipe and rank
+count. Use `--init_ckpt` for older VAE files containing only weights.
+
+## Checkpoint selection and inference
+
+Follow the [stage-artifact table](../README.md#4-train-and-connect-the-stage-artifacts)
+to connect pretraining, alignment, VAE adaptation and paired training.
+The aligner's recorded RF base must resolve to the paired configuration's
+`finetune_from`. Preserve that path when relocating checkpoints; a local link
+can reproduce a historical relative directory layout.
+
+VAE adaptation freezes the encoder, keeping the latent caches valid. Paired
+adaptation freezes the VAE and reads the cached Brain-ID features. RF,
+ControlNet and the endpoint aligner share parameters across fields and modalities.
+
+`fieldrf_paired_latest.pt` after epoch 20 contains joint RF/aligner EMA.
+`fieldrf_paired_best_task3.pt` is selected by validation. For either choice,
+pass the same file as `--checkpoint` and `--endpoint_checkpoint`, set its actual
+epoch tag, and use the epoch-1 adapted VAE decoder.
+
+For source transport without the endpoint aligner, omit `--endpoint_checkpoint`
+and add `--source_endpoint_transport`, retaining explicit inversion steps and
+solver. Task 3 translates all non-identity field pairs with one model. Inference
+reads both caches and the raw source MRI grid; TTA defaults to none.
+Use `--help` for source/target subsets and the
+[submission guide](../mrix2026-cli/README.md) for packaging.
+
+For an isolated one-epoch run, follow the
+[small-data instructions](../REPRODUCIBILITY.md#run-an-isolated-small-data-check).

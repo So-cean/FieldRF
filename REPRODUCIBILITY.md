@@ -187,6 +187,22 @@ Check that the adapted VAE encoder is unchanged and its decoder has updated.
 Keep smoke artifacts separate from the full experiment.
 
 
+## Retained paper checkpoint validation (2026-10-19)
+
+Release `dda305c` strictly loaded the retained epoch-20 paired best and latest
+RF checkpoints, epoch-90 pretraining RF, initial endpoint aligner and epoch-1
+adapted VAE on one V100S 32GB. The official RF/VAE hashes matched their submission
+manifest; the best RF export equaled the latest checkpoint's EMA. Historical
+aligner base paths resolved through a local runtime directory link.
+
+The public inference entry point processed the same validation subject in
+T1W, T2W and T2FLAIR, translating `3T→7T` with 20-step Euler inversion and
+20-step generation. All outputs were finite, nonempty, in `[0,1]` and preserved
+source shape/affine. Mean absolute differences from the historical predictions
+using the same decoder were `8.65e-6`, `9.61e-6` and `9.82e-6`, respectively;
+the largest voxel difference was `0.00244`. This check reused existing caches
+and trained weights supplied outside the repository.
+
 ## Remaining limits
 
 The short run checks execution and artifact consistency on real inputs. It
